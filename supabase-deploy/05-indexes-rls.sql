@@ -2,47 +2,144 @@
 -- 인덱스 생성 (성능 최적화)
 -- ============================================
 
--- Users 인덱스
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code);
-CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
-CREATE INDEX IF NOT EXISTS idx_users_grade ON users(grade);
+-- Users 인덱스 (안전하게 생성)
+DO $$
+BEGIN
+    -- email 인덱스
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'email') THEN
+        CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    END IF;
+    
+    -- username 인덱스
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'username') THEN
+        CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+    END IF;
+    
+    -- referral_code 인덱스
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'referral_code') THEN
+        CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code);
+    END IF;
+    
+    -- status 인덱스
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'status') THEN
+        CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+    END IF;
+    
+    -- grade 인덱스
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'grade') THEN
+        CREATE INDEX IF NOT EXISTS idx_users_grade ON users(grade);
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Some user indexes may have issues: %', SQLERRM;
+END$$;
 
--- Businesses 인덱스
-CREATE INDEX IF NOT EXISTS idx_businesses_email ON businesses(email);
-CREATE INDEX IF NOT EXISTS idx_businesses_status ON businesses(status);
+-- Businesses 인덱스 (안전하게 생성)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'email') THEN
+        CREATE INDEX IF NOT EXISTS idx_businesses_email ON businesses(email);
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'status') THEN
+        CREATE INDEX IF NOT EXISTS idx_businesses_status ON businesses(status);
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Some business indexes may have issues: %', SQLERRM;
+END$$;
 
--- Campaigns 인덱스
-CREATE INDEX IF NOT EXISTS idx_campaigns_business_id ON campaigns(business_id);
-CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(approval_status);
-CREATE INDEX IF NOT EXISTS idx_campaigns_active ON campaigns(is_active);
-CREATE INDEX IF NOT EXISTS idx_campaigns_dates ON campaigns(start_date, end_date);
+-- Campaigns 인덱스 (안전하게 생성)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'business_id') THEN
+        CREATE INDEX IF NOT EXISTS idx_campaigns_business_id ON campaigns(business_id);
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'approval_status') THEN
+        CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(approval_status);
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'is_active') THEN
+        CREATE INDEX IF NOT EXISTS idx_campaigns_active ON campaigns(is_active);
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'start_date') 
+       AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'end_date') THEN
+        CREATE INDEX IF NOT EXISTS idx_campaigns_dates ON campaigns(start_date, end_date);
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Some campaign indexes may have issues: %', SQLERRM;
+END$$;
 
--- User Campaigns 인덱스
-CREATE INDEX IF NOT EXISTS idx_user_campaigns_user_id ON user_campaigns(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_campaigns_campaign_id ON user_campaigns(campaign_id);
-CREATE INDEX IF NOT EXISTS idx_user_campaigns_tracking_code ON user_campaigns(tracking_code);
+-- User Campaigns 인덱스 (안전하게 생성)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_campaigns') THEN
+        CREATE INDEX IF NOT EXISTS idx_user_campaigns_user_id ON user_campaigns(user_id);
+        CREATE INDEX IF NOT EXISTS idx_user_campaigns_campaign_id ON user_campaigns(campaign_id);
+        CREATE INDEX IF NOT EXISTS idx_user_campaigns_tracking_code ON user_campaigns(tracking_code);
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Some user_campaigns indexes may have issues: %', SQLERRM;
+END$$;
 
--- Click Events 인덱스
-CREATE INDEX IF NOT EXISTS idx_click_events_user_campaign_id ON click_events(user_campaign_id);
-CREATE INDEX IF NOT EXISTS idx_click_events_campaign_id ON click_events(campaign_id);
-CREATE INDEX IF NOT EXISTS idx_click_events_user_id ON click_events(user_id);
-CREATE INDEX IF NOT EXISTS idx_click_events_time ON click_events(click_time);
+-- Click Events 인덱스 (안전하게 생성)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'click_events') THEN
+        CREATE INDEX IF NOT EXISTS idx_click_events_user_campaign_id ON click_events(user_campaign_id);
+        CREATE INDEX IF NOT EXISTS idx_click_events_campaign_id ON click_events(campaign_id);
+        CREATE INDEX IF NOT EXISTS idx_click_events_user_id ON click_events(user_id);
+        CREATE INDEX IF NOT EXISTS idx_click_events_time ON click_events(click_time);
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Some click_events indexes may have issues: %', SQLERRM;
+END$$;
 
--- User Earnings 인덱스
-CREATE INDEX IF NOT EXISTS idx_user_earnings_user_id ON user_earnings(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_earnings_created ON user_earnings(created_at);
+-- User Earnings 인덱스 (안전하게 생성)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_earnings') THEN
+        CREATE INDEX IF NOT EXISTS idx_user_earnings_user_id ON user_earnings(user_id);
+        CREATE INDEX IF NOT EXISTS idx_user_earnings_created ON user_earnings(created_at);
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Some user_earnings indexes may have issues: %', SQLERRM;
+END$$;
 
--- Business Billing 인덱스
-CREATE INDEX IF NOT EXISTS idx_business_billing_business_id ON business_billing(business_id);
-CREATE INDEX IF NOT EXISTS idx_business_billing_status ON business_billing(status);
+-- Business Billing 인덱스 (안전하게 생성)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'business_billing') THEN
+        CREATE INDEX IF NOT EXISTS idx_business_billing_business_id ON business_billing(business_id);
+        CREATE INDEX IF NOT EXISTS idx_business_billing_status ON business_billing(status);
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Some business_billing indexes may have issues: %', SQLERRM;
+END$$;
 
--- Community 인덱스
-CREATE INDEX IF NOT EXISTS idx_community_posts_author ON community_posts(author_id);
-CREATE INDEX IF NOT EXISTS idx_community_posts_created ON community_posts(created_at);
-CREATE INDEX IF NOT EXISTS idx_community_comments_post ON community_comments(post_id);
-CREATE INDEX IF NOT EXISTS idx_community_comments_author ON community_comments(author_id);
+-- Community 인덱스 (안전하게 생성)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'community_posts') THEN
+        CREATE INDEX IF NOT EXISTS idx_community_posts_author ON community_posts(author_id);
+        CREATE INDEX IF NOT EXISTS idx_community_posts_created ON community_posts(created_at);
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'community_comments') THEN
+        CREATE INDEX IF NOT EXISTS idx_community_comments_post ON community_comments(post_id);
+        CREATE INDEX IF NOT EXISTS idx_community_comments_author ON community_comments(author_id);
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Some community indexes may have issues: %', SQLERRM;
+END$$;
 
 -- ============================================
 -- Row Level Security (RLS) 활성화
