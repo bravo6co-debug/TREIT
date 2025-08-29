@@ -134,10 +134,14 @@ export class EnvValidator {
   static validateClientEnv(): ClientEnvConfig {
     const errors: string[] = [];
     
-    // 필수 환경변수들
+    // 필수 환경변수들 (Supabase만 필수)
     const requiredVars = [
       'VITE_SUPABASE_URL',
-      'VITE_SUPABASE_ANON_KEY',
+      'VITE_SUPABASE_ANON_KEY'
+    ];
+    
+    // 선택적 환경변수들 (기본값 제공)
+    const optionalVars = [
       'VITE_USER_APP_URL',
       'VITE_ADVERTISER_APP_URL',
       'VITE_ADMIN_APP_URL',
@@ -188,17 +192,20 @@ export class EnvValidator {
       throw new Error(`Environment validation failed:\n${errors.join('\n')}`);
     }
     
+    // 기본값 제공
+    const currentUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
+    
     return {
       VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
       VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
-      VITE_USER_APP_URL: import.meta.env.VITE_USER_APP_URL,
-      VITE_ADVERTISER_APP_URL: import.meta.env.VITE_ADVERTISER_APP_URL,
-      VITE_ADMIN_APP_URL: import.meta.env.VITE_ADMIN_APP_URL,
-      VITE_USER_APP_NAME: import.meta.env.VITE_USER_APP_NAME,
-      VITE_ADVERTISER_APP_NAME: import.meta.env.VITE_ADVERTISER_APP_NAME,
-      VITE_ADMIN_APP_NAME: import.meta.env.VITE_ADMIN_APP_NAME,
-      VITE_AUTH_REDIRECT_URL: import.meta.env.VITE_AUTH_REDIRECT_URL,
-      VITE_AUTH_SITE_URL: import.meta.env.VITE_AUTH_SITE_URL,
+      VITE_USER_APP_URL: import.meta.env.VITE_USER_APP_URL || currentUrl,
+      VITE_ADVERTISER_APP_URL: import.meta.env.VITE_ADVERTISER_APP_URL || currentUrl,
+      VITE_ADMIN_APP_URL: import.meta.env.VITE_ADMIN_APP_URL || currentUrl,
+      VITE_USER_APP_NAME: import.meta.env.VITE_USER_APP_NAME || 'Treit User',
+      VITE_ADVERTISER_APP_NAME: import.meta.env.VITE_ADVERTISER_APP_NAME || 'Treit Advertiser',
+      VITE_ADMIN_APP_NAME: import.meta.env.VITE_ADMIN_APP_NAME || 'Treit Admin',
+      VITE_AUTH_REDIRECT_URL: import.meta.env.VITE_AUTH_REDIRECT_URL || `${currentUrl}/auth/callback`,
+      VITE_AUTH_SITE_URL: import.meta.env.VITE_AUTH_SITE_URL || currentUrl,
       VITE_GOOGLE_OAUTH_CLIENT_ID: import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID,
       VITE_ANALYTICS_PUBLIC_KEY: import.meta.env.VITE_ANALYTICS_PUBLIC_KEY,
       VITE_NODE_ENV: import.meta.env.VITE_NODE_ENV || 'development',
