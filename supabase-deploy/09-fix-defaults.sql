@@ -5,19 +5,36 @@
 -- Users 테이블 기본값 설정
 DO $$
 BEGIN
-    -- level 컬럼 기본값을 1로 설정
-    ALTER TABLE users ALTER COLUMN level SET DEFAULT 1;
-    
-    -- grade 컬럼 기본값을 BRONZE로 설정
-    ALTER TABLE users ALTER COLUMN grade SET DEFAULT 'BRONZE'::user_grade;
-    
-    -- 숫자 컬럼들 기본값 0으로 설정
-    ALTER TABLE users ALTER COLUMN xp SET DEFAULT 0;
-    ALTER TABLE users ALTER COLUMN total_clicks SET DEFAULT 0;
-    ALTER TABLE users ALTER COLUMN total_earnings SET DEFAULT 0;
-    ALTER TABLE users ALTER COLUMN balance SET DEFAULT 0;
-    
-    RAISE NOTICE '✅ User table defaults updated';
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') THEN
+        -- 각 컬럼이 존재하는지 확인하고 기본값 설정
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'level') THEN
+            ALTER TABLE users ALTER COLUMN level SET DEFAULT 1;
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'grade') THEN
+            ALTER TABLE users ALTER COLUMN grade SET DEFAULT 'BRONZE'::user_grade;
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'xp') THEN
+            ALTER TABLE users ALTER COLUMN xp SET DEFAULT 0;
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'total_clicks') THEN
+            ALTER TABLE users ALTER COLUMN total_clicks SET DEFAULT 0;
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'total_earnings') THEN
+            ALTER TABLE users ALTER COLUMN total_earnings SET DEFAULT 0;
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'balance') THEN
+            ALTER TABLE users ALTER COLUMN balance SET DEFAULT 0;
+        END IF;
+        
+        RAISE NOTICE '✅ User table defaults updated';
+    ELSE
+        RAISE NOTICE 'Users table does not exist yet';
+    END IF;
 EXCEPTION
     WHEN OTHERS THEN
         RAISE NOTICE 'Error updating user defaults: %', SQLERRM;
@@ -26,17 +43,28 @@ END$$;
 -- Businesses 테이블 기본값 설정
 DO $$
 BEGIN
-    -- balance와 total_spent 기본값 0으로 설정
-    ALTER TABLE businesses ALTER COLUMN balance SET DEFAULT 0;
-    ALTER TABLE businesses ALTER COLUMN total_spent SET DEFAULT 0;
-    
-    -- status 기본값 PENDING으로 설정
-    ALTER TABLE businesses ALTER COLUMN status SET DEFAULT 'PENDING'::business_status;
-    
-    -- is_verified 기본값 false로 설정
-    ALTER TABLE businesses ALTER COLUMN is_verified SET DEFAULT false;
-    
-    RAISE NOTICE '✅ Business table defaults updated';
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'businesses') THEN
+        -- 각 컬럼이 존재하는지 확인하고 기본값 설정
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'balance') THEN
+            ALTER TABLE businesses ALTER COLUMN balance SET DEFAULT 0;
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'total_spent') THEN
+            ALTER TABLE businesses ALTER COLUMN total_spent SET DEFAULT 0;
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'status') THEN
+            ALTER TABLE businesses ALTER COLUMN status SET DEFAULT 'PENDING'::business_status;
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'is_verified') THEN
+            ALTER TABLE businesses ALTER COLUMN is_verified SET DEFAULT false;
+        END IF;
+        
+        RAISE NOTICE '✅ Business table defaults updated';
+    ELSE
+        RAISE NOTICE 'Businesses table does not exist yet';
+    END IF;
 EXCEPTION
     WHEN OTHERS THEN
         RAISE NOTICE 'Error updating business defaults: %', SQLERRM;
@@ -46,31 +74,62 @@ END$$;
 -- 기존 NULL 데이터 수정 (이미 가입한 사용자)
 -- ============================================
 
--- 기존 사용자 중 level이 NULL인 경우 1로 설정
-UPDATE users 
-SET 
-    level = COALESCE(level, 1),
-    grade = COALESCE(grade, 'BRONZE'::user_grade),
-    xp = COALESCE(xp, 0),
-    total_clicks = COALESCE(total_clicks, 0),
-    total_earnings = COALESCE(total_earnings, 0),
-    balance = COALESCE(balance, 0),
-    status = COALESCE(status, 'ACTIVE'::user_status)
-WHERE level IS NULL OR grade IS NULL;
-
--- 레퍼럴 코드가 없는 사용자에게 생성
-UPDATE users
-SET referral_code = UPPER(SUBSTR(MD5(RANDOM()::TEXT || id::TEXT), 1, 8))
-WHERE referral_code IS NULL;
+-- 기존 사용자 데이터 수정 (테이블이 존재하는 경우만)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') THEN
+        -- balance 컬럼이 존재하는지 확인
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'balance') THEN
+            -- 기존 사용자 중 level이 NULL인 경우 1로 설정
+            UPDATE users 
+            SET 
+                level = COALESCE(level, 1),
+                grade = COALESCE(grade, 'BRONZE'::user_grade),
+                xp = COALESCE(xp, 0),
+                total_clicks = COALESCE(total_clicks, 0),
+                total_earnings = COALESCE(total_earnings, 0),
+                balance = COALESCE(balance, 0),
+                status = COALESCE(status, 'ACTIVE'::user_status)
+            WHERE level IS NULL OR grade IS NULL OR balance IS NULL;
+            
+            -- 레퍼럴 코드가 없는 사용자에게 생성
+            UPDATE users
+            SET referral_code = UPPER(SUBSTR(MD5(RANDOM()::TEXT || id::TEXT), 1, 8))
+            WHERE referral_code IS NULL;
+            
+            RAISE NOTICE 'User data updated successfully';
+        ELSE
+            RAISE NOTICE 'Balance column does not exist in users table';
+        END IF;
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Error updating user data: %', SQLERRM;
+END$$;
 
 -- 기존 광고주 데이터 정리
-UPDATE businesses
-SET 
-    balance = COALESCE(balance, 0),
-    total_spent = COALESCE(total_spent, 0),
-    status = COALESCE(status, 'PENDING'::business_status),
-    is_verified = COALESCE(is_verified, false)
-WHERE balance IS NULL OR status IS NULL;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'businesses') THEN
+        -- balance 컬럼이 존재하는지 확인
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = 'balance') THEN
+            UPDATE businesses
+            SET 
+                balance = COALESCE(balance, 0),
+                total_spent = COALESCE(total_spent, 0),
+                status = COALESCE(status, 'PENDING'::business_status),
+                is_verified = COALESCE(is_verified, false)
+            WHERE balance IS NULL OR status IS NULL;
+            
+            RAISE NOTICE 'Business data updated successfully';
+        ELSE
+            RAISE NOTICE 'Balance column does not exist in businesses table';
+        END IF;
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Error updating business data: %', SQLERRM;
+END$$;
 
 -- ============================================
 -- 테스트용 데이터 정리 (선택사항)
