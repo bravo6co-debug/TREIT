@@ -10,8 +10,7 @@
       "framework": "vite",
       "buildCommand": "cd treit-app && npm ci && npm run build",
       "outputDirectory": "treit-app/build",
-      "installCommand": "npm ci",
-      "nodeVersion": "18.x"
+      "installCommand": "npm ci"
     },
     {
       "name": "treit-advertiser", 
@@ -19,8 +18,7 @@
       "framework": "vite",
       "buildCommand": "cd treit-advertiser && npm ci && npm run build",
       "outputDirectory": "treit-advertiser/build",
-      "installCommand": "npm ci",
-      "nodeVersion": "18.x"
+      "installCommand": "npm ci"
     },
     {
       "name": "treit-admin",
@@ -28,8 +26,7 @@
       "framework": "vite",
       "buildCommand": "cd treit-admin && npm ci && npm run build",
       "outputDirectory": "treit-admin/build",
-      "installCommand": "npm ci",
-      "nodeVersion": "18.x"
+      "installCommand": "npm ci"
     }
   ],
   "rewrites": [
