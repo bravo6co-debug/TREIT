@@ -99,10 +99,14 @@ BEGIN
                     'type', type
                 )
                 ORDER BY created_at DESC
-                LIMIT 10
             ), '[]'::json)
-            FROM user_earnings
-            WHERE user_id = auth.uid()
+            FROM (
+                SELECT created_at, amount, type
+                FROM user_earnings
+                WHERE user_id = auth.uid()
+                ORDER BY created_at DESC
+                LIMIT 10
+            ) AS recent
         ),
         'stats', (
             SELECT json_build_object(
@@ -164,16 +168,20 @@ BEGIN
         'recent_clicks', (
             SELECT COALESCE(json_agg(
                 json_build_object(
-                    'campaign_name', c.name,
-                    'click_time', ce.click_time,
-                    'user_id', ce.user_id
+                    'campaign_name', campaign_name,
+                    'click_time', click_time,
+                    'user_id', user_id
                 )
+                ORDER BY click_time DESC
+            ), '[]'::json)
+            FROM (
+                SELECT c.name as campaign_name, ce.click_time, ce.user_id
+                FROM click_events ce
+                JOIN campaigns c ON c.id = ce.campaign_id
+                WHERE c.business_id = auth.uid()
                 ORDER BY ce.click_time DESC
                 LIMIT 20
-            ), '[]'::json)
-            FROM click_events ce
-            JOIN campaigns c ON c.id = ce.campaign_id
-            WHERE c.business_id = auth.uid()
+            ) AS recent_clicks
         )
     ) INTO result;
     
