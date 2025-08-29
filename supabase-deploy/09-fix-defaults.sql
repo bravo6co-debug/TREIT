@@ -170,37 +170,62 @@ END$$;
 -- 사용자/광고주 구분 뷰
 -- ============================================
 
--- 일반 사용자만 보는 뷰
-CREATE OR REPLACE VIEW user_profiles AS
-SELECT 
-    u.*,
-    lc.grade_title,
-    lc.level_title,
-    lc.cpc_bonus_rate,
-    lc.daily_bonus,
-    lc.referral_bonus,
-    (lc.required_xp - u.xp) as xp_to_next_level,
-    CASE 
-        WHEN lc.required_xp > 0 THEN (u.xp::float / lc.required_xp * 100)
-        ELSE 0 
-    END as level_progress
-FROM users u
-LEFT JOIN level_config lc ON u.level = lc.level
-WHERE NOT EXISTS (
-    SELECT 1 FROM businesses b WHERE b.id = u.id
-);
-
--- 광고주만 보는 뷰
-CREATE OR REPLACE VIEW business_profiles AS
-SELECT 
-    b.*,
-    (SELECT COUNT(*) FROM campaigns WHERE business_id = b.id) as total_campaigns,
-    (SELECT COUNT(*) FROM campaigns WHERE business_id = b.id AND is_active = true) as active_campaigns
-FROM businesses b;
-
--- 권한 부여
-GRANT SELECT ON user_profiles TO authenticated;
-GRANT SELECT ON business_profiles TO authenticated;
+-- 뷰 생성 (테이블이 존재하는 경우만)
+DO $$
+BEGIN
+    -- 일반 사용자만 보는 뷰
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') THEN
+        CREATE OR REPLACE VIEW user_profiles AS
+        SELECT 
+            u.*,
+            lc.grade_title,
+            lc.level_title,
+            lc.cpc_bonus_rate,
+            lc.daily_bonus,
+            lc.referral_bonus,
+            (lc.required_xp - u.xp) as xp_to_next_level,
+            CASE 
+                WHEN lc.required_xp > 0 THEN (u.xp::float / lc.required_xp * 100)
+                ELSE 0 
+            END as level_progress
+        FROM users u
+        LEFT JOIN level_config lc ON u.level = lc.level
+        WHERE NOT EXISTS (
+            SELECT 1 FROM businesses b WHERE b.id = u.id
+        );
+        
+        GRANT SELECT ON user_profiles TO authenticated;
+        RAISE NOTICE 'user_profiles view created';
+    END IF;
+    
+    -- 광고주만 보는 뷰
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'businesses') 
+       AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'campaigns') THEN
+        CREATE OR REPLACE VIEW business_profiles AS
+        SELECT 
+            b.*,
+            (SELECT COUNT(*) FROM campaigns WHERE business_id = b.id) as total_campaigns,
+            (SELECT COUNT(*) FROM campaigns WHERE business_id = b.id AND is_active = true) as active_campaigns
+        FROM businesses b;
+        
+        GRANT SELECT ON business_profiles TO authenticated;
+        RAISE NOTICE 'business_profiles view created';
+    ELSIF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'businesses') THEN
+        -- campaigns 테이블이 없으면 단순 뷰 생성
+        CREATE OR REPLACE VIEW business_profiles AS
+        SELECT 
+            b.*,
+            0 as total_campaigns,
+            0 as active_campaigns
+        FROM businesses b;
+        
+        GRANT SELECT ON business_profiles TO authenticated;
+        RAISE NOTICE 'business_profiles view created (without campaigns)';
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Error creating views: %', SQLERRM;
+END$$;
 
 -- 완료 메시지
 DO $$
