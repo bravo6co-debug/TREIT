@@ -6,7 +6,6 @@
   "buildCommand": "npm run build",
   "outputDirectory": "build",
   "installCommand": "npm ci",
-  "nodeVersion": "18.x",
   "regions": ["icn1"],
   "env": {
     "VITE_APP_ENV": "production",
