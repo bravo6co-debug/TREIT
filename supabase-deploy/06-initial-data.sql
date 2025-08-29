@@ -2,6 +2,35 @@
 -- 초기 데이터 삽입
 -- ============================================
 
+-- Level Config 테이블 재생성 (필요한 경우)
+DO $$
+BEGIN
+    -- 테이블이 존재하지만 컬럼이 없는 경우를 대비
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'level_config' 
+        AND column_name = 'cpc_bonus_rate'
+    ) THEN
+        -- 테이블 삭제 후 재생성
+        DROP TABLE IF EXISTS level_config CASCADE;
+        
+        CREATE TABLE level_config (
+            level INTEGER PRIMARY KEY,
+            grade user_grade NOT NULL,
+            required_xp INTEGER NOT NULL,
+            cpc_bonus_rate DECIMAL(5, 2) DEFAULT 0,
+            daily_bonus INTEGER DEFAULT 0,
+            referral_bonus INTEGER DEFAULT 0,
+            grade_title VARCHAR(50),
+            level_title VARCHAR(100),
+            benefits JSONB DEFAULT '[]',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        RAISE NOTICE 'level_config table recreated with correct structure';
+    END IF;
+END$$;
+
 -- Level Config 데이터 (레벨 시스템 설정)
 INSERT INTO level_config (level, grade, required_xp, cpc_bonus_rate, daily_bonus, referral_bonus, grade_title, level_title)
 SELECT * FROM (VALUES
@@ -69,9 +98,19 @@ WHERE NOT EXISTS (SELECT 1 FROM level_config WHERE level = v.level);
 
 -- 기본 관리자 계정 생성 (선택사항)
 -- 비밀번호는 나중에 Supabase Auth에서 설정해야 합니다
-INSERT INTO admin_users (email, username, full_name, role)
-SELECT 'admin@treitmaster.com', 'admin', 'System Administrator', 'SUPER_ADMIN'
-WHERE NOT EXISTS (SELECT 1 FROM admin_users WHERE email = 'admin@treitmaster.com');
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'admin_users') THEN
+        INSERT INTO admin_users (email, username, full_name, role)
+        SELECT 'admin@treitmaster.com', 'admin', 'System Administrator', 'SUPER_ADMIN'
+        WHERE NOT EXISTS (SELECT 1 FROM admin_users WHERE email = 'admin@treitmaster.com');
+    ELSE
+        RAISE NOTICE 'admin_users table does not exist, skipping admin account creation';
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Could not create admin user: %', SQLERRM;
+END$$;
 
 -- ============================================
 -- 트리거 함수 생성 (updated_at 자동 업데이트)
@@ -110,36 +149,52 @@ END$$;
 -- 유용한 함수들
 -- ============================================
 
--- 사용자 레벨업 체크 함수
-CREATE OR REPLACE FUNCTION check_user_level_up(user_id_param UUID)
-RETURNS void AS $$
-DECLARE
-    user_record RECORD;
-    next_level RECORD;
+-- 사용자 레벨업 체크 함수 (안전하게 생성)
+DO $$
 BEGIN
-    -- 사용자 정보 조회
-    SELECT * INTO user_record FROM users WHERE id = user_id_param;
-    
-    -- 다음 레벨 정보 조회
-    SELECT * INTO next_level 
-    FROM level_config 
-    WHERE required_xp > user_record.xp 
-    ORDER BY required_xp ASC 
-    LIMIT 1;
-    
-    -- 레벨업 가능한 경우 업데이트
-    IF next_level.required_xp <= user_record.xp THEN
-        UPDATE users 
-        SET level = next_level.level,
-            grade = next_level.grade
-        WHERE id = user_id_param;
+    -- 필요한 테이블들이 모두 존재하는지 확인
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') 
+       AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'level_config')
+       AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'rewards') THEN
         
-        -- 레벨업 보상 추가
-        INSERT INTO rewards (user_id, type, xp_points, description)
-        VALUES (user_id_param, 'level_up', 50, '레벨 ' || next_level.level || ' 달성!');
+        CREATE OR REPLACE FUNCTION check_user_level_up(user_id_param UUID)
+        RETURNS void AS $func$
+        DECLARE
+            user_record RECORD;
+            next_level RECORD;
+        BEGIN
+            -- 사용자 정보 조회
+            SELECT * INTO user_record FROM users WHERE id = user_id_param;
+            
+            -- 다음 레벨 정보 조회
+            SELECT * INTO next_level 
+            FROM level_config 
+            WHERE required_xp > user_record.xp 
+            ORDER BY required_xp ASC 
+            LIMIT 1;
+            
+            -- 레벨업 가능한 경우 업데이트
+            IF next_level.required_xp <= user_record.xp THEN
+                UPDATE users 
+                SET level = next_level.level,
+                    grade = next_level.grade
+                WHERE id = user_id_param;
+                
+                -- 레벨업 보상 추가
+                INSERT INTO rewards (user_id, type, xp_points, description)
+                VALUES (user_id_param, 'level_up', 50, '레벨 ' || next_level.level || ' 달성!');
+            END IF;
+        END;
+        $func$ LANGUAGE plpgsql;
+        
+        RAISE NOTICE 'check_user_level_up function created successfully';
+    ELSE
+        RAISE NOTICE 'Required tables not found, skipping check_user_level_up function creation';
     END IF;
-END;
-$$ LANGUAGE plpgsql;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Could not create check_user_level_up function: %', SQLERRM;
+END$$;
 
 -- 완료 메시지
 DO $$
