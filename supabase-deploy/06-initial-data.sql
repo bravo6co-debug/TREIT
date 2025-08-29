@@ -140,6 +140,7 @@ $$ language 'plpgsql';
 DO $$
 DECLARE
     t text;
+    trigger_name text;
 BEGIN
     FOR t IN 
         SELECT table_name 
@@ -147,14 +148,28 @@ BEGIN
         WHERE column_name = 'updated_at' 
         AND table_schema = 'public'
     LOOP
-        EXECUTE format('
-            CREATE TRIGGER update_%I_updated_at 
-            BEFORE UPDATE ON %I 
-            FOR EACH ROW 
-            EXECUTE FUNCTION update_updated_at_column()',
-            t, t
-        );
+        trigger_name := 'update_' || t || '_updated_at';
+        
+        -- 트리거가 이미 존재하는지 확인
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_trigger 
+            WHERE tgname = trigger_name
+        ) THEN
+            EXECUTE format('
+                CREATE TRIGGER %I 
+                BEFORE UPDATE ON %I 
+                FOR EACH ROW 
+                EXECUTE FUNCTION update_updated_at_column()',
+                trigger_name, t
+            );
+            RAISE NOTICE 'Trigger % created', trigger_name;
+        ELSE
+            RAISE NOTICE 'Trigger % already exists, skipping', trigger_name;
+        END IF;
     END LOOP;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Error creating triggers: %', SQLERRM;
 END$$;
 
 -- ============================================
