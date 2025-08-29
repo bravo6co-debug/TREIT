@@ -1,0 +1,396 @@
+name: Release Management
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Type of release'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      pre_release:
+        description: 'Create pre-release'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  # Create release version
+  prepare-release:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Configure git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Get current version
+        id: current
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Bump version
+        id: version
+        run: |
+          npm version ${{ github.event.inputs.release_type }} --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update package versions in apps
+        run: |
+          # Update version in all app package.json files
+          cd treit-app
+          npm version ${{ steps.version.outputs.version }} --no-git-tag-version
+          cd ../treit-advertiser
+          npm version ${{ steps.version.outputs.version }} --no-git-tag-version
+          cd ../treit-admin
+          npm version ${{ steps.version.outputs.version }} --no-git-tag-version
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$PREVIOUS_TAG" ]; then
+            CHANGELOG="Initial release"
+          else
+            # Generate changelog from commits
+            CHANGELOG=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s (%an)" --no-merges | head -20)
+          fi
+          
+          # Save changelog to file
+          cat > CHANGELOG_TEMP.md << 'EOF'
+          ## What's Changed
+          
+          $CHANGELOG
+          
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...${{ steps.version.outputs.tag }}
+          EOF
+          
+          echo "CHANGELOG<<EOFCHANGELOG" >> $GITHUB_OUTPUT
+          cat CHANGELOG_TEMP.md >> $GITHUB_OUTPUT
+          echo "EOFCHANGELOG" >> $GITHUB_OUTPUT
+
+      - name: Commit version changes
+        run: |
+          git add package.json treit-app/package.json treit-advertiser/package.json treit-admin/package.json
+          git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
+          git push origin main
+
+      - name: Create and push tag
+        run: |
+          git tag ${{ steps.version.outputs.tag }}
+          git push origin ${{ steps.version.outputs.tag }}
+
+  # Run full test suite before release
+  pre-release-tests:
+    name: Pre-Release Tests
+    runs-on: ubuntu-latest
+    needs: [prepare-release]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd treit-app && npm ci
+          cd ../treit-advertiser && npm ci
+          cd ../treit-admin && npm ci
+
+      - name: Run type checking
+        run: |
+          cd treit-app && npm run typecheck
+          cd ../treit-advertiser && npm run typecheck
+          cd ../treit-admin && npm run typecheck
+
+      - name: Run tests
+        run: npm run test:integration
+
+      - name: Build applications
+        run: |
+          cd treit-app && npm run build
+          cd ../treit-advertiser && npm run build
+          cd ../treit-admin && npm run build
+
+  # Build Docker images for release
+  build-release-images:
+    name: Build Release Images
+    runs-on: ubuntu-latest
+    needs: [prepare-release, pre-release-tests]
+    strategy:
+      matrix:
+        app: [treit-app, treit-advertiser, treit-admin]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.app }}
+          file: ./${{ matrix.app }}/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ matrix.app }}:${{ needs.prepare-release.outputs.version }}
+            ghcr.io/${{ github.repository }}/${{ matrix.app }}:latest
+          labels: |
+            org.opencontainers.image.title=${{ matrix.app }}
+            org.opencontainers.image.description=TreitMaster ${{ matrix.app }}
+            org.opencontainers.image.version=${{ needs.prepare-release.outputs.version }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+  # Create GitHub release
+  create-github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [prepare-release, pre-release-tests, build-release-images]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Generate detailed changelog
+        id: changelog
+        run: |
+          # Get commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          if [ -z "$LAST_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%an)" --no-merges)
+          else
+            COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"- %s (%an)" --no-merges)
+          fi
+          
+          # Categorize commits
+          FEATURES=$(echo "$COMMITS" | grep -i "feat\|add\|new" || echo "")
+          FIXES=$(echo "$COMMITS" | grep -i "fix\|bug\|resolve" || echo "")
+          IMPROVEMENTS=$(echo "$COMMITS" | grep -i "improve\|enhance\|update\|refactor" || echo "")
+          OTHERS=$(echo "$COMMITS" | grep -v -i "feat\|add\|new\|fix\|bug\|resolve\|improve\|enhance\|update\|refactor" || echo "")
+          
+          # Build changelog
+          CHANGELOG="## 🚀 What's New in v${{ needs.prepare-release.outputs.version }}\n\n"
+          
+          if [ ! -z "$FEATURES" ]; then
+            CHANGELOG+="### ✨ New Features\n$FEATURES\n\n"
+          fi
+          
+          if [ ! -z "$FIXES" ]; then
+            CHANGELOG+="### 🐛 Bug Fixes\n$FIXES\n\n"
+          fi
+          
+          if [ ! -z "$IMPROVEMENTS" ]; then
+            CHANGELOG+="### 🔧 Improvements\n$IMPROVEMENTS\n\n"
+          fi
+          
+          if [ ! -z "$OTHERS" ]; then
+            CHANGELOG+="### 📝 Other Changes\n$OTHERS\n\n"
+          fi
+          
+          CHANGELOG+="## 🐳 Docker Images\n"
+          CHANGELOG+="- \`ghcr.io/${{ github.repository }}/treit-app:${{ needs.prepare-release.outputs.version }}\`\n"
+          CHANGELOG+="- \`ghcr.io/${{ github.repository }}/treit-advertiser:${{ needs.prepare-release.outputs.version }}\`\n"
+          CHANGELOG+="- \`ghcr.io/${{ github.repository }}/treit-admin:${{ needs.prepare-release.outputs.version }}\`\n\n"
+          
+          CHANGELOG+="## 🔗 Deployment URLs\n"
+          CHANGELOG+="- **User App**: https://app.treitmaster.com\n"
+          CHANGELOG+="- **Advertiser App**: https://advertiser.treitmaster.com\n"
+          CHANGELOG+="- **Admin App**: https://admin.treitmaster.com\n\n"
+          
+          if [ ! -z "$LAST_TAG" ]; then
+            CHANGELOG+="**Full Changelog**: https://github.com/${{ github.repository }}/compare/$LAST_TAG...${{ needs.prepare-release.outputs.tag }}"
+          fi
+          
+          echo "CHANGELOG<<EOFCHANGELOG" >> $GITHUB_OUTPUT
+          echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOFCHANGELOG" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag }}
+          release_name: "TreitMaster ${{ needs.prepare-release.outputs.tag }}"
+          body: ${{ steps.changelog.outputs.CHANGELOG }}
+          draft: false
+          prerelease: ${{ github.event.inputs.pre_release == 'true' }}
+
+  # Deploy release to production (if not pre-release)
+  deploy-release:
+    name: Deploy Release to Production
+    needs: [prepare-release, create-github-release]
+    if: github.event.inputs.pre_release != 'true'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+    secrets: inherit
+
+  # Post-release tasks
+  post-release:
+    name: Post-Release Tasks
+    runs-on: ubuntu-latest
+    needs: [prepare-release, create-github-release]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Update documentation
+        run: |
+          # Update version in documentation
+          sed -i "s/version: .*/version: ${{ needs.prepare-release.outputs.version }}/g" README.md
+          
+          # Update API documentation version
+          if [ -f "docs/API.md" ]; then
+            sed -i "s/Version: .*/Version: ${{ needs.prepare-release.outputs.version }}/g" docs/API.md
+          fi
+
+      - name: Create next development version
+        run: |
+          # Bump to next patch version for development
+          npm version patch --no-git-tag-version
+          NEXT_VERSION=$(node -p "require('./package.json').version")
+          
+          # Update apps
+          cd treit-app && npm version $NEXT_VERSION --no-git-tag-version
+          cd ../treit-advertiser && npm version $NEXT_VERSION --no-git-tag-version
+          cd ../treit-admin && npm version $NEXT_VERSION --no-git-tag-version
+          
+          # Commit changes
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add package.json treit-app/package.json treit-advertiser/package.json treit-admin/package.json README.md docs/
+          git commit -m "chore: prepare next development version $NEXT_VERSION" || exit 0
+          git push origin main
+
+      - name: Update release notes on website
+        run: |
+          # This would typically call an API to update the website
+          # or trigger another workflow to update documentation site
+          curl -X POST "${{ secrets.WEBSITE_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.WEBSITE_API_TOKEN }}" \
+            -d '{
+              "action": "update_release_notes",
+              "version": "${{ needs.prepare-release.outputs.version }}",
+              "changelog": "${{ steps.changelog.outputs.CHANGELOG }}"
+            }' || echo "Website webhook not configured"
+
+  # Notify team about release
+  notify-release:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: [prepare-release, create-github-release]
+    if: always()
+    steps:
+      - name: Notify Slack on Success
+        if: needs.create-github-release.result == 'success'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#treitmaster-releases'
+          text: |
+            🎉 **TreitMaster ${{ needs.prepare-release.outputs.tag }} Released!**
+            
+            **Type:** ${{ github.event.inputs.release_type }} release
+            **Pre-release:** ${{ github.event.inputs.pre_release }}
+            
+            **🔗 Links:**
+            • [GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${{ needs.prepare-release.outputs.tag }})
+            • [User App](https://app.treitmaster.com)
+            • [Advertiser App](https://advertiser.treitmaster.com)
+            • [Admin App](https://admin.treitmaster.com)
+            
+            **🐳 Docker Images:**
+            • `ghcr.io/${{ github.repository }}/treit-app:${{ needs.prepare-release.outputs.version }}`
+            • `ghcr.io/${{ github.repository }}/treit-advertiser:${{ needs.prepare-release.outputs.version }}`
+            • `ghcr.io/${{ github.repository }}/treit-admin:${{ needs.prepare-release.outputs.version }}`
+            
+            Great work team! 🚀
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify Slack on Failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#treitmaster-releases'
+          text: |
+            ❌ **TreitMaster Release Failed!**
+            
+            **Attempted Version:** ${{ needs.prepare-release.outputs.tag }}
+            **Type:** ${{ github.event.inputs.release_type }} release
+            
+            Please check the [GitHub Actions logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Create Jira release (if configured)
+        if: success()
+        run: |
+          # Example Jira API call to create/update release
+          curl -X POST "${{ secrets.JIRA_API_URL }}/rest/api/3/version" \
+            -H "Authorization: Basic ${{ secrets.JIRA_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "name": "${{ needs.prepare-release.outputs.version }}",
+              "description": "TreitMaster Release ${{ needs.prepare-release.outputs.version }}",
+              "projectId": "${{ secrets.JIRA_PROJECT_ID }}",
+              "released": true,
+              "releaseDate": "'$(date -I)'"
+            }' || echo "Jira integration not configured"

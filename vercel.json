@@ -1,0 +1,68 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "monorepo": true,
+  "buildCommand": "npm run build",
+  "projects": [
+    {
+      "name": "treit-app",
+      "source": "treit-app",
+      "framework": "vite",
+      "buildCommand": "cd treit-app && npm ci && npm run build",
+      "outputDirectory": "treit-app/build",
+      "installCommand": "npm ci",
+      "nodeVersion": "18.x"
+    },
+    {
+      "name": "treit-advertiser", 
+      "source": "treit-advertiser",
+      "framework": "vite",
+      "buildCommand": "cd treit-advertiser && npm ci && npm run build",
+      "outputDirectory": "treit-advertiser/build",
+      "installCommand": "npm ci",
+      "nodeVersion": "18.x"
+    },
+    {
+      "name": "treit-admin",
+      "source": "treit-admin", 
+      "framework": "vite",
+      "buildCommand": "cd treit-admin && npm ci && npm run build",
+      "outputDirectory": "treit-admin/build",
+      "installCommand": "npm ci",
+      "nodeVersion": "18.x"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options", 
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://*.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; font-src 'self' data:;"
+        }
+      ]
+    }
+  ]
+}

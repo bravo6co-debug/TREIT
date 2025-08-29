@@ -1,0 +1,376 @@
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { auth, db } from '../supabase';
+import { toast } from 'sonner';
+
+export interface User {
+  id: string;
+  email: string;
+  full_name?: string;
+  phone?: string;
+  level?: number;
+  xp?: number;
+  grade?: string;
+  total_earnings?: number;
+  available_balance?: number;
+}
+
+interface AuthState {
+  // State
+  user: User | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  session: any;
+  
+  // Actions
+  login: (email: string, password: string) => Promise<boolean>;
+  signup: (email: string, password: string, userData: { full_name?: string }) => Promise<boolean>;
+  logout: () => Promise<void>;
+  checkAuth: () => Promise<void>;
+  updateUser: (userData: Partial<User>) => void;
+  setLoading: (loading: boolean) => void;
+}
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      // Initial state
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+      session: null,
+
+      // Login action
+      login: async (email: string, password: string) => {
+        console.log('AuthStore: Starting login process for:', email);
+        set({ isLoading: true });
+        
+        try {
+          console.log('AuthStore: Calling auth.signIn');
+          const { data, error } = await auth.signIn(email, password);
+          
+          console.log('AuthStore: Sign-in response:', { 
+            hasUser: !!data?.user, 
+            hasSession: !!data?.session, 
+            error: error?.message,
+            errorCode: error?.status 
+          });
+          
+          if (error) {
+            console.error('AuthStore: Login error from Supabase:', error);
+            let errorMessage = '로그인에 실패했습니다';
+            
+            // Provide specific error messages
+            if (error.message.includes('Invalid login credentials')) {
+              errorMessage = '이메일 또는 비밀번호가 잘못되었습니다';
+            } else if (error.message.includes('Email not confirmed')) {
+              errorMessage = '이메일 인증이 필요합니다. 이메일을 확인해주세요';
+            } else if (error.message.includes('Too many requests')) {
+              errorMessage = '너무 많은 시도가 있었습니다. 잠시 후 다시 시도해주세요';
+            } else {
+              errorMessage += ': ' + error.message;
+            }
+            
+            toast.error(errorMessage);
+            return false;
+          }
+          
+          if (data.user) {
+            console.log('AuthStore: User authenticated, fetching profile');
+            
+            // Fetch user profile from database
+            const userProfile = await get().fetchUserProfile(data.user.id);
+            
+            if (userProfile) {
+              console.log('AuthStore: User profile loaded:', userProfile);
+              set({
+                user: userProfile,
+                isAuthenticated: true,
+                session: data.session,
+                isLoading: false
+              });
+              
+              toast.success('로그인 성공!');
+              return true;
+            } else {
+              console.error('AuthStore: Failed to load user profile');
+              toast.error('사용자 정보를 불러오는데 실패했습니다');
+              return false;
+            }
+          }
+          
+          console.log('AuthStore: No user in response');
+          return false;
+        } catch (error) {
+          console.error('AuthStore: Login error:', error);
+          toast.error('로그인 중 예상치 못한 오류가 발생했습니다');
+          return false;
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      // Signup action
+      signup: async (email: string, password: string, userData: { full_name?: string, phone?: string }) => {
+        console.log('AuthStore: Starting signup process for:', email);
+        set({ isLoading: true });
+        
+        try {
+          console.log('AuthStore: Calling auth.signUp');
+          const { data, error } = await auth.signUp(email, password, userData);
+          
+          console.log('AuthStore: Sign-up response:', { 
+            hasUser: !!data?.user, 
+            hasSession: !!data?.session, 
+            error: error?.message,
+            errorCode: error?.status,
+            needsConfirmation: data?.user && !data?.session
+          });
+          
+          if (error) {
+            console.error('AuthStore: Signup error from Supabase:', error);
+            let errorMessage = '회원가입에 실패했습니다';
+            
+            // Provide specific error messages
+            if (error.message.includes('User already registered')) {
+              errorMessage = '이미 등록된 이메일입니다';
+            } else if (error.message.includes('Password should be')) {
+              errorMessage = '비밀번호는 최소 6자 이상이어야 합니다';
+            } else if (error.message.includes('Unable to validate email')) {
+              errorMessage = '유효하지 않은 이메일 주소입니다';
+            } else {
+              errorMessage += ': ' + error.message;
+            }
+            
+            toast.error(errorMessage);
+            return false;
+          }
+          
+          if (data.user) {
+            console.log('AuthStore: User created in Supabase Auth:', data.user.id);
+            
+            // Create user profile in user_profiles table immediately
+            try {
+              const newUserData = {
+                id: data.user.id,
+                email: email,
+                full_name: userData.full_name || '',
+                phone: userData.phone || ''
+              };
+              
+              console.log('AuthStore: Creating user profile in database:', newUserData);
+              
+              const { data: userProfile, error: profileError } = await db.createUserProfile(newUserData);
+              
+              if (profileError) {
+                console.error('AuthStore: Failed to create user profile:', profileError);
+                // Don't fail signup if profile creation fails - user can still log in
+                if (data.session) {
+                  toast.success('회원가입 완료! 프로필 설정은 나중에 완료할 수 있습니다.');
+                } else {
+                  toast.success('회원가입 성공! 이메일을 확인하고 인증을 완료해주세요.');
+                }
+              } else {
+                console.log('AuthStore: User profile created successfully:', userProfile);
+                if (data.session) {
+                  toast.success('회원가입 완료!');
+                } else {
+                  toast.success('회원가입 성공! 이메일을 확인하고 인증을 완료해주세요.');
+                }
+              }
+            } catch (profileError) {
+              console.error('AuthStore: Error creating user profile:', profileError);
+              if (data.session) {
+                toast.success('회원가입 완료! 프로필 설정은 나중에 완료할 수 있습니다.');
+              } else {
+                toast.success('회원가입 성공! 이메일을 확인하고 인증을 완료해주세요.');
+              }
+            }
+            
+            return true;
+          }
+          
+          console.log('AuthStore: No user in signup response');
+          return false;
+        } catch (error) {
+          console.error('AuthStore: Signup error:', error);
+          toast.error('회원가입 중 예상치 못한 오류가 발생했습니다');
+          return false;
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      // Logout action
+      logout: async () => {
+        set({ isLoading: true });
+        
+        try {
+          const { error } = await auth.signOut();
+          
+          if (error) {
+            toast.error('로그아웃에 실패했습니다: ' + error.message);
+          } else {
+            set({
+              user: null,
+              isAuthenticated: false,
+              session: null,
+              isLoading: false
+            });
+            
+            toast.success('로그아웃되었습니다');
+          }
+        } catch (error) {
+          console.error('Logout error:', error);
+          toast.error('로그아웃 중 오류가 발생했습니다');
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      // Check authentication status
+      checkAuth: async () => {
+        set({ isLoading: true });
+        
+        try {
+          const { session, error } = await auth.getSession();
+          
+          if (error) {
+            console.error('Session check error:', error);
+            set({
+              user: null,
+              isAuthenticated: false,
+              session: null,
+              isLoading: false
+            });
+            return;
+          }
+          
+          if (session?.user) {
+            // Fetch user profile from database
+            const userProfile = await get().fetchUserProfile(session.user.id);
+            
+            set({
+              user: userProfile,
+              isAuthenticated: true,
+              session: session,
+              isLoading: false
+            });
+          } else {
+            set({
+              user: null,
+              isAuthenticated: false,
+              session: null,
+              isLoading: false
+            });
+          }
+        } catch (error) {
+          console.error('Auth check error:', error);
+          set({
+            user: null,
+            isAuthenticated: false,
+            session: null,
+            isLoading: false
+          });
+        }
+      },
+
+      // Fetch user profile from database
+      fetchUserProfile: async (userId: string): Promise<User | null> => {
+        try {
+          console.log('Fetching user profile for userId:', userId);
+          
+          // Try to get user profile from database first
+          const { data: userProfile, error } = await db.getUserProfile(userId);
+          
+          if (error) {
+            console.error('Error fetching user profile from DB:', error);
+            
+            // If user doesn't exist in users table, get info from auth session
+            const { session } = await auth.getSession();
+            if (session?.user) {
+              console.log('Creating user profile from session data');
+              // Create user profile in database
+              const newUserData = {
+                id: userId,
+                email: session.user.email || '',
+                full_name: session.user.user_metadata?.full_name || '',
+                phone: session.user.user_metadata?.phone || ''
+              };
+              
+              const { data: createdProfile, error: createError } = await db.createUserProfile(newUserData);
+              
+              if (createError) {
+                console.error('Error creating user profile:', createError);
+                // Return basic profile with session data
+                return {
+                  id: userId,
+                  email: session.user.email || '',
+                  full_name: session.user.user_metadata?.full_name || '',
+                  phone: session.user.user_metadata?.phone || '',
+                  level: 1,
+                  xp: 0,
+                  grade: 'BRONZE',
+                  total_earnings: 0,
+                  available_balance: 0
+                };
+              } else if (createdProfile) {
+                return {
+                  id: createdProfile.id,
+                  email: createdProfile.email,
+                  full_name: createdProfile.full_name || '',
+                  phone: createdProfile.phone || '',
+                  level: createdProfile.current_level || 1,
+                  xp: createdProfile.total_points || 0,
+                  grade: 'BRONZE',
+                  total_earnings: 0,
+                  available_balance: 0
+                };
+              }
+            }
+            return null;
+          } else if (userProfile) {
+            console.log('User profile found in database:', userProfile);
+            return {
+              id: userProfile.id,
+              email: userProfile.email,
+              full_name: userProfile.full_name || '',
+              phone: userProfile.phone || '',
+              level: userProfile.current_level || 1,
+              xp: userProfile.total_points || 0,
+              grade: 'BRONZE',
+              total_earnings: 0,
+              available_balance: 0
+            };
+          }
+          
+          return null;
+        } catch (error) {
+          console.error('Fetch user profile error:', error);
+          return null;
+        }
+      },
+
+      // Update user data
+      updateUser: (userData: Partial<User>) => {
+        set((state) => ({
+          user: state.user ? { ...state.user, ...userData } : null
+        }));
+      },
+
+      // Set loading state
+      setLoading: (loading: boolean) => {
+        set({ isLoading: loading });
+      }
+    }),
+    {
+      name: 'auth-storage',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+        session: state.session
+      })
+    }
+  )
+);
