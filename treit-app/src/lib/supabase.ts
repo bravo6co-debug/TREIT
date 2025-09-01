@@ -208,16 +208,23 @@ export const auth = {
 
 // Database helper functions
 export const db = {
-  // Get user profile from user_profiles table
-  getUserProfile: async (userId: string) => {
+  // Get user profile from users table
+  getUserProfile: async (authUid: string) => {
     try {
+      console.log('Fetching user profile for auth_uid:', authUid);
+      
       const { data, error } = await supabase
-        .from('user_profiles')
+        .from('users')
         .select('*')
-        .eq('id', userId)
+        .eq('auth_uid', authUid)
         .single()
       
-      if (error) throw error
+      if (error) {
+        console.error('Error fetching from users table:', error);
+        throw error;
+      }
+      
+      console.log('User profile fetched:', data);
       return { data, error: null }
     } catch (error) {
       console.error('Get user profile error:', error)
@@ -225,17 +232,34 @@ export const db = {
     }
   },
 
-  // Create user profile in user_profiles table
+  // Also export from method for direct access
+  from: (table: string) => supabase.from(table),
+
+  // Create user profile in users table
   createUserProfile: async (userData: {
-    id: string;
+    auth_uid: string;
     email: string;
     full_name?: string;
     phone?: string;
   }) => {
     try {
       const { data, error } = await supabase
-        .from('user_profiles')
-        .insert([userData])
+        .from('users')
+        .insert([{
+          auth_uid: userData.auth_uid,
+          email: userData.email,
+          full_name: userData.full_name || '',
+          phone: userData.phone || '',
+          nickname: userData.email?.split('@')[0] || `user_${Date.now()}`,
+          level: 1,
+          grade: 'BRONZE',
+          xp: 0,
+          total_clicks: 0,
+          valid_clicks: 0,
+          total_earnings: 0,
+          available_balance: 0,
+          status: 'ACTIVE'
+        }])
         .select()
         .single()
       
@@ -247,18 +271,23 @@ export const db = {
     }
   },
 
-  // Update user profile in user_profiles table
-  updateUserProfile: async (userId: string, updates: Partial<{
+  // Update user profile in users table
+  updateUserProfile: async (authUid: string, updates: Partial<{
     full_name: string;
     phone: string;
-    current_level: number;
-    total_points: number;
+    nickname: string;
+    level: number;
+    xp: number;
+    total_clicks: number;
+    valid_clicks: number;
+    total_earnings: number;
+    available_balance: number;
   }>) => {
     try {
       const { data, error } = await supabase
-        .from('user_profiles')
+        .from('users')
         .update(updates)
-        .eq('id', userId)
+        .eq('auth_uid', authUid)
         .select()
         .single()
       

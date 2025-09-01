@@ -28,7 +28,7 @@ interface Campaign {
   endDate: string
   description?: string
   targetAudience?: string
-  costPerClick?: number
+  cpc_rate?: number
   createdAt?: string
   updatedAt?: string
 }
@@ -77,7 +77,7 @@ export function CampaignList({
           endDate: '2024-12-31',
           description: '겨울 시즌 할인 프로모션',
           targetAudience: '20-40대 여성',
-          costPerClick: 100,
+          cpc_rate: 100,
           createdAt: '2024-11-15',
           updatedAt: '2024-12-20'
         },
@@ -94,7 +94,7 @@ export function CampaignList({
           endDate: '2024-11-30',
           description: '신제품 출시 홍보',
           targetAudience: '전 연령대',
-          costPerClick: 100,
+          cpc_rate: 100,
           createdAt: '2024-10-25',
           updatedAt: '2024-11-30'
         },
@@ -111,7 +111,7 @@ export function CampaignList({
           endDate: '2025-01-31',
           description: '브랜드 인지도 개선을 위한 장기 캠페인',
           targetAudience: '25-50대 직장인',
-          costPerClick: 100,
+          cpc_rate: 100,
           createdAt: '2024-12-10',
           updatedAt: '2024-12-18'
         },
@@ -128,7 +128,7 @@ export function CampaignList({
           endDate: '2025-01-05',
           description: '연말연시 특별 할인',
           targetAudience: '전체 고객',
-          costPerClick: 100,
+          cpc_rate: 100,
           createdAt: '2024-12-05',
           updatedAt: '2024-12-22'
         },
@@ -145,7 +145,7 @@ export function CampaignList({
           endDate: '2024-12-31',
           description: '모바일 앱 설치 유도',
           targetAudience: '스마트폰 사용자',
-          costPerClick: 100,
+          cpc_rate: 100,
           createdAt: '2024-11-20',
           updatedAt: '2024-12-19'
         }

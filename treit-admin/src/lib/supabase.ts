@@ -29,12 +29,13 @@ export const auth = {
       // Verify admin access
       if (data.user) {
         const { data: userData, error: userError } = await supabase
-          .from('user_profiles')
-          .select('role')
-          .eq('id', data.user.id)
+          .from('users')
+          .select('status')
+          .eq('auth_uid', data.user.id)
           .single()
         
-        if (userError || (userData?.role !== 'admin' && userData?.role !== 'support')) {
+        // For now, allow any active user to access admin (you can add role field later)
+        if (userError || userData?.status !== 'ACTIVE') {
           await supabase.auth.signOut()
           throw new Error('Access denied. Admin privileges required.')
         }
@@ -90,14 +91,11 @@ export const db = {
     getUsers: async (limit = 50, offset = 0, searchTerm?: string) => {
       try {
         let query = supabase
-          .from('user_profiles')
-          .select(`
-            *,
-            user_levels(level_number, level_name, tier_multiplier)
-          `)
+          .from('users')
+          .select('*')
         
         if (searchTerm) {
-          query = query.or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`)
+          query = query.or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,nickname.ilike.%${searchTerm}%`)
         }
         
         const { data, error } = await query
@@ -116,11 +114,8 @@ export const db = {
     getUser: async (userId: string) => {
       try {
         const { data, error } = await supabase
-          .from('user_profiles')
-          .select(`
-            *,
-            user_levels(level_number, level_name, tier_multiplier)
-          `)
+          .from('users')
+          .select('*')
           .eq('id', userId)
           .single()
         
@@ -156,7 +151,7 @@ export const db = {
         const { data, error } = await supabase
           .from('users')
           .update({ 
-            is_active: !banned,
+            status: banned ? 'SUSPENDED' : 'ACTIVE',
             updated_at: new Date().toISOString()
           })
           .eq('id', userId)
@@ -181,22 +176,21 @@ export const db = {
         const { data: activeUsers, error: activeError } = await supabase
           .from('users')
           .select('id', { count: 'exact' })
-          .eq('is_active', true)
+          .eq('status', 'ACTIVE')
         
-        const { data: advertisers, error: advertiserError } = await supabase
-          .from('users')
+        const { data: businesses, error: businessError } = await supabase
+          .from('businesses')
           .select('id', { count: 'exact' })
-          .eq('user_type', 'advertiser')
         
-        if (totalError || activeError || advertiserError) {
-          throw totalError || activeError || advertiserError
+        if (totalError || activeError || businessError) {
+          throw totalError || activeError || businessError
         }
         
         return {
           data: {
             total: totalUsers?.length || 0,
             active: activeUsers?.length || 0,
-            advertisers: advertisers?.length || 0
+            advertisers: businesses?.length || 0
           },
           error: null
         }

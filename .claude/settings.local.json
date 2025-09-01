@@ -36,7 +36,10 @@
       "Bash(git branch:*)",
       "Bash(git pull:*)",
       "Bash(git checkout:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(./node_modules/supabase/bin/supabase.exe:*)",
+      "Bash(psql:*)",
+      "Bash(export SUPABASE_SERVICE_ROLE_KEY=\"service_role_key_placeholder\")"
     ],
     "deny": [],
     "ask": []

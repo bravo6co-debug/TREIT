@@ -1,225 +1,319 @@
-import React, { useState } from 'react';
-import { Copy, Edit3, DollarSign, ExternalLink, Check, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Copy, Edit3, DollarSign, ExternalLink, Check, X, Sparkles, Clock, Target, TrendingUp } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Textarea } from './ui/textarea';
-
-interface PromotionMission {
-  id: number;
-  companyName: string;
-  content: string;
-  linkUrl: string;
-  cpc: number;
-}
-
-const promotionMissions: PromotionMission[] = [
-  {
-    id: 1,
-    companyName: '카페 모카',
-    content: '새로 오픈한 카페 모카에서 신메뉴 출시 이벤트를 진행해요! 🎉\n\n✨ 할인 혜택:\n- 아메리카노 50% 할인\n- 케이크 세트 20% 할인\n- 첫 방문 고객 쿠폰 증정\n\n📍 위치: 강남구 테헤란로 123\n⏰ 이벤트 기간: 12월 1일~31일\n\n맛있는 커피 한 잔 어떠세요? ☕',
-    linkUrl: 'https://cafe-mocha.com/event2024',
-    cpc: 150
-  },
-  {
-    id: 2,
-    companyName: '스마트핏 헬스장',
-    content: '새해 건강 목표 세우셨나요? 💪\n\n스마트핏에서 신년 특가 이벤트 진행 중!\n🔥 1월 한정 혜택:\n- 6개월 이용권 40% 할인\n- PT 10회 무료 제공\n- 인바디 측정 무료\n\n올해는 꼭 건강한 몸 만들어보세요!\n지금 바로 신청하세요 👇',
-    linkUrl: 'https://smartfit.co.kr/newyear2024',
-    cpc: 320
-  },
-  {
-    id: 3,
-    companyName: '퓨어뷰티 화장품',
-    content: '겨울철 건조한 피부 때문에 고민이세요? ❄️\n\n퓨어뷰티 겨울 스킨케어 세트로 해결하세요!\n🌟 세트 구성:\n- 수분 토너 + 에센스 + 크림\n- 무료 샘플 5종 증정\n- 전국 무료배송\n\n지금 주문하면 30% 할인가로 만나볼 수 있어요!\n아름다운 피부의 시작은 퓨어뷰티와 함께 ✨',
-    linkUrl: 'https://purebeauty.com/winter-set',
-    cpc: 180
-  },
-  {
-    id: 4,
-    companyName: '테크기어 온라인몰',
-    content: '최신 스마트워치 출시 기념 이벤트! ⌚\n\n🎁 런칭 기념 혜택:\n- 얼리버드 30% 할인\n- 무선충전기 무료 증정\n- 2년 품질보증\n- 30일 무료 체험\n\n건강관리와 스마트한 라이프스타일을 원한다면?\n테크기어에서 만나보세요! 📱',
-    linkUrl: 'https://techgear.kr/smartwatch-launch',
-    cpc: 250
-  }
-];
+import { toast } from 'sonner';
+import { useAuthStore } from '../lib/stores/authStore';
+import { 
+  getAvailableCampaigns, 
+  getMyCampaigns, 
+  participateInCampaign,
+  generateTrackingUrl,
+  type Campaign,
+  type UserCampaign
+} from '../lib/api/campaigns';
 
 export default function ProjectsScreen() {
-  const [copiedId, setCopiedId] = useState<number | null>(null);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [missions, setMissions] = useState<PromotionMission[]>(promotionMissions);
-  const [editContent, setEditContent] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [availableCampaigns, setAvailableCampaigns] = useState<Campaign[]>([]);
+  const [myCampaigns, setMyCampaigns] = useState<UserCampaign[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'available' | 'participating'>('available');
+  const [participatingIds, setParticipatingIds] = useState<string[]>([]);
+  
+  const { user } = useAuthStore();
 
-  const copyToClipboard = (content: string, linkUrl: string, id: number) => {
-    const fullContent = `${content}\n\n${linkUrl}`;
-    navigator.clipboard.writeText(fullContent).then(() => {
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
-    }).catch(() => {
-      alert('복사에 실패했습니다. 다시 시도해주세요.');
+  // 캠페인 데이터 로드
+  useEffect(() => {
+    if (user?.id) {
+      loadCampaigns();
+    }
+  }, [user?.id]);
+
+  const loadCampaigns = async () => {
+    if (!user?.id) return;
+    
+    setIsLoading(true);
+    try {
+      const [available, participating] = await Promise.all([
+        getAvailableCampaigns(user.id),
+        getMyCampaigns(user.id)
+      ]);
+      
+      setAvailableCampaigns(available);
+      setMyCampaigns(participating);
+      setParticipatingIds(participating.map(c => c.campaign_id));
+    } catch (error) {
+      console.error('Error loading campaigns:', error);
+      toast.error('캠페인을 불러오는데 실패했습니다');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 캠페인 참여하기
+  const handleParticipate = async (campaignId: string) => {
+    if (!user?.id) {
+      toast.error('로그인이 필요합니다');
+      return;
+    }
+
+    setParticipatingIds(prev => [...prev, campaignId]);
+    
+    const result = await participateInCampaign(user.id, campaignId);
+    
+    if (result) {
+      toast.success('캠페인에 참여했습니다!');
+      await loadCampaigns(); // 목록 새로고침
+      setActiveTab('participating'); // 참여 중 탭으로 이동
+    } else {
+      setParticipatingIds(prev => prev.filter(id => id !== campaignId));
+    }
+  };
+
+  // URL 복사하기
+  const handleCopyUrl = (trackingCode: string) => {
+    const url = generateTrackingUrl(trackingCode);
+    navigator.clipboard.writeText(url);
+    setCopiedId(trackingCode);
+    toast.success('링크가 복사되었습니다!');
+    
+    setTimeout(() => {
+      setCopiedId(null);
+    }, 2000);
+  };
+
+  // 날짜 포맷
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ko-KR', { 
+      month: 'short', 
+      day: 'numeric' 
     });
   };
 
-  const handleEdit = (mission: PromotionMission) => {
-    setEditingId(mission.id);
-    setEditContent(mission.content);
+  // 남은 시간 계산
+  const getDaysRemaining = (endDate: string) => {
+    const end = new Date(endDate);
+    const now = new Date();
+    const diff = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 0;
   };
 
-  const handleSaveEdit = () => {
-    if (editingId === null) return;
-    
-    setMissions(prev => prev.map(mission => 
-      mission.id === editingId 
-        ? { ...mission, content: editContent }
-        : mission
-    ));
-    
-    setEditingId(null);
-    setEditContent('');
+  // 등급별 색상
+  const getGradeColor = (grade: string) => {
+    switch(grade?.toUpperCase()) {
+      case 'PLATINUM': return 'text-purple-600';
+      case 'DIAMOND': return 'text-cyan-500';
+      case 'GOLD': return 'text-yellow-500';
+      case 'SILVER': return 'text-gray-400';
+      default: return 'text-orange-600';
+    }
   };
 
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setEditContent('');
-  };
-
-
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
+            <div className="space-y-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-32 bg-gray-200 rounded"></div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white p-4 shadow-sm">
-        <h1 className="text-lg font-semibold">프로젝트</h1>
-        <p className="text-sm text-gray-600">사용 가능한 미션을 확인하세요</p>
-      </div>
-
-      <div className="p-4">
-        <div className="space-y-4">
-          {missions.map((mission) => (
-            <Card key={mission.id} className="p-4">
-              {editingId === mission.id ? (
-                /* Edit Mode */
-                <div className="space-y-4">
-                  {/* Edit Header */}
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-semibold text-blue-600">홍보 내용 수정</h3>
-                    <Badge variant="outline" className="text-orange-600 border-orange-200">
-                      수정 중
-                    </Badge>
-                  </div>
-
-                  {/* Read-only Info */}
-                  <div className="bg-gray-50 rounded-lg p-3 mb-4">
-                    <div className="grid gap-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">업체명:</span>
-                        <span className="font-medium">{mission.companyName}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">CPC 단가:</span>
-                        <span className="font-medium text-green-600">₩{mission.cpc}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">링크:</span>
-                        <span className="font-medium text-blue-600 truncate ml-2">{mission.linkUrl}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Content Editor */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">홍보 내용</label>
-                    <Textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      placeholder="홍보 내용을 입력하세요"
-                      className="min-h-40 resize-none"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      줄바꿈과 이모지를 사용하여 매력적인 홍보 내용을 작성해보세요
-                    </p>
-                  </div>
-
-                  {/* Edit Action Buttons */}
-                  <div className="flex space-x-2 pt-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCancelEdit}
-                      className="flex-1"
-                    >
-                      <X size={16} className="mr-2" />
-                      취소
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={handleSaveEdit}
-                      className="flex-1 bg-gradient-to-r from-pink-400 to-purple-500 text-white hover:from-pink-500 hover:to-purple-600 hover:shadow-lg hover:shadow-pink-400/30 shadow-pink-400/20"
-                      disabled={!editContent.trim()}
-                    >
-                      <Check size={16} className="mr-2" />
-                      시작하기
-                    </Button>
-                  </div>
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white p-4">
+      <div className="max-w-4xl mx-auto">
+        {/* 헤더 */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">💰 광고 캠페인</h1>
+          <p className="text-gray-600">캠페인에 참여하고 수익을 창출하세요!</p>
+          
+          {/* 내 레벨 정보 */}
+          {user && (
+            <div className="mt-4 p-3 bg-white rounded-lg shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">내 레벨:</span>
+                  <Badge className={getGradeColor(user.grade || 'BRONZE')}>
+                    Lv.{user.level || 1} {user.grade || 'BRONZE'}
+                  </Badge>
                 </div>
-              ) : (
-                /* View Mode */
-                <>
-                  {/* Header */}
+                <div className="flex items-center gap-1 text-sm text-green-600">
+                  <TrendingUp className="w-4 h-4" />
+                  <span>CPC 보너스 적용 중</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 탭 메뉴 */}
+        <div className="flex gap-2 mb-4">
+          <Button
+            onClick={() => setActiveTab('available')}
+            variant={activeTab === 'available' ? 'default' : 'outline'}
+            className="flex-1"
+          >
+            <Sparkles className="w-4 h-4 mr-2" />
+            참여 가능 ({availableCampaigns.length})
+          </Button>
+          <Button
+            onClick={() => setActiveTab('participating')}
+            variant={activeTab === 'participating' ? 'default' : 'outline'}
+            className="flex-1"
+          >
+            <Target className="w-4 h-4 mr-2" />
+            참여 중 ({myCampaigns.length})
+          </Button>
+        </div>
+
+        {/* 캠페인 목록 */}
+        <div className="space-y-4">
+          {activeTab === 'available' ? (
+            // 참여 가능한 캠페인
+            availableCampaigns.length > 0 ? (
+              availableCampaigns.map((campaign) => (
+                <Card key={campaign.id} className="p-4 hover:shadow-lg transition-shadow">
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex-1">
-                      <h3 className="font-semibold mb-1">{mission.companyName}</h3>
-                      <div className="flex items-center">
-                        <ExternalLink size={14} className="text-gray-400 mr-1" />
-                        <p className="text-sm text-gray-600 break-all">{mission.linkUrl}</p>
+                      <h3 className="font-semibold text-lg text-gray-900 mb-1">
+                        {campaign.name}
+                      </h3>
+                      <div className="flex items-center gap-3 text-sm text-gray-500">
+                        <Badge variant="secondary">{campaign.category}</Badge>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {getDaysRemaining(campaign.end_date)}일 남음
+                        </span>
                       </div>
                     </div>
-                    <div className="flex items-center ml-4">
-                      <DollarSign size={16} className="text-green-500 mr-1" />
-                      <span className="font-semibold text-green-600">₩{mission.cpc}</span>
-                      <span className="text-xs text-gray-500 ml-1">/클릭</span>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-green-600">
+                        ₩{campaign.effective_cpc?.toFixed(0) || campaign.cpc_rate}
+                      </div>
+                      <div className="text-xs text-gray-500">클릭당 수익</div>
+                      {campaign.effective_cpc && campaign.effective_cpc > campaign.cpc_rate && (
+                        <div className="text-xs text-green-600 mt-1">
+                          +{((campaign.effective_cpc - campaign.cpc_rate) / campaign.cpc_rate * 100).toFixed(0)}% 보너스
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {/* Content */}
-                  <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-800 whitespace-pre-line">
-                      {mission.content}
-                    </p>
+                  <p className="text-gray-600 text-sm mb-3 line-clamp-2">
+                    {campaign.description}
+                  </p>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                      <span>목표: {campaign.target_clicks?.toLocaleString() || '무제한'} 클릭</span>
+                      <span>잔여 예산: ₩{campaign.remaining_budget?.toLocaleString()}</span>
+                    </div>
+                    
+                    <Button
+                      onClick={() => handleParticipate(campaign.id)}
+                      disabled={participatingIds.includes(campaign.id)}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      {participatingIds.includes(campaign.id) ? '참여 중...' : '참여하기'}
+                    </Button>
+                  </div>
+                </Card>
+              ))
+            ) : (
+              <Card className="p-8 text-center">
+                <p className="text-gray-500">현재 참여 가능한 캠페인이 없습니다</p>
+                <p className="text-sm text-gray-400 mt-2">새로운 캠페인이 곧 등록될 예정입니다</p>
+              </Card>
+            )
+          ) : (
+            // 참여 중인 캠페인
+            myCampaigns.length > 0 ? (
+              myCampaigns.map((userCampaign) => (
+                <Card key={userCampaign.id} className="p-4">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-lg text-gray-900 mb-1">
+                        {userCampaign.campaign?.name}
+                      </h3>
+                      <div className="flex items-center gap-3 text-sm text-gray-500">
+                        <Badge variant="secondary">{userCampaign.campaign?.category}</Badge>
+                        <span>트래킹 코드: {userCampaign.tracking_code}</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xl font-bold text-blue-600">
+                        ₩{userCampaign.total_earnings.toLocaleString()}
+                      </div>
+                      <div className="text-xs text-gray-500">총 수익</div>
+                    </div>
                   </div>
 
-                  {/* Action Buttons */}
-                  <div className="flex space-x-2">
+                  <div className="grid grid-cols-3 gap-3 mb-3 p-3 bg-gray-50 rounded">
+                    <div className="text-center">
+                      <div className="text-lg font-semibold">{userCampaign.total_clicks}</div>
+                      <div className="text-xs text-gray-500">총 클릭</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-semibold">₩{userCampaign.campaign?.cpc_rate}</div>
+                      <div className="text-xs text-gray-500">클릭당 단가</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-semibold text-green-600">활성</div>
+                      <div className="text-xs text-gray-500">상태</div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
                     <Button
+                      onClick={() => handleCopyUrl(userCampaign.tracking_code)}
                       variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        copyToClipboard(mission.content, mission.linkUrl, mission.id);
-                      }}
                       className="flex-1"
-                      disabled={copiedId === mission.id}
                     >
-                      <Copy size={16} className="mr-2" />
-                      {copiedId === mission.id ? '복사됨!' : '복사'}
+                      {copiedId === userCampaign.tracking_code ? (
+                        <>
+                          <Check className="w-4 h-4 mr-2" />
+                          복사됨!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4 mr-2" />
+                          링크 복사
+                        </>
+                      )}
                     </Button>
                     <Button
+                      onClick={() => window.open(userCampaign.campaign?.destination_url, '_blank')}
                       variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEdit(mission);
-                      }}
-                      className="flex-1"
-                      disabled={editingId !== null}
                     >
-                      <Edit3 size={16} className="mr-2" />
-                      수정
+                      <ExternalLink className="w-4 h-4" />
                     </Button>
                   </div>
-                </>
-              )}
-            </Card>
-          ))}
+                </Card>
+              ))
+            ) : (
+              <Card className="p-8 text-center">
+                <p className="text-gray-500">아직 참여 중인 캠페인이 없습니다</p>
+                <Button 
+                  onClick={() => setActiveTab('available')}
+                  className="mt-4"
+                >
+                  캠페인 둘러보기
+                </Button>
+              </Card>
+            )
+          )}
         </div>
       </div>
     </div>

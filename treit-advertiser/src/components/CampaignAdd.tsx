@@ -46,7 +46,7 @@ export function CampaignAdd({ onSuccess, advertiserId }: CampaignAddProps) {
     title: '',
     description: '',
     original_url: '',
-    cost_per_click: 90, // 포스팅당 90원
+    cpc_rate: 90, // 포스팅당 90원
     total_budget: 0,
     daily_budget: 0,
     total_clicks_target: 0,
@@ -72,7 +72,7 @@ export function CampaignAdd({ onSuccess, advertiserId }: CampaignAddProps) {
   const [enableAutoDeeplink, setEnableAutoDeeplink] = useState(true)
 
   // Calculate values
-  const totalAmount = formData.total_clicks_target * formData.cost_per_click || 0
+  const totalAmount = formData.total_clicks_target * formData.cpc_rate || 0
   const dailyBudget = formData.daily_budget || 0
   const postingPrice = formData.quantity > 0 ? Math.round(totalAmount / formData.quantity) : 0
 
@@ -147,8 +147,8 @@ export function CampaignAdd({ onSuccess, advertiserId }: CampaignAddProps) {
 
   // Auto-calculate budget when quantity changes
   useEffect(() => {
-    if (formData.total_clicks_target && formData.cost_per_click) {
-      const newTotalBudget = formData.total_clicks_target * formData.cost_per_click
+    if (formData.total_clicks_target && formData.cpc_rate) {
+      const newTotalBudget = formData.total_clicks_target * formData.cpc_rate
       const period = calculatePeriod()
       const newDailyBudget = period > 0 ? Math.ceil(newTotalBudget / period) : 0
       
@@ -158,7 +158,7 @@ export function CampaignAdd({ onSuccess, advertiserId }: CampaignAddProps) {
         daily_budget: newDailyBudget
       }))
     }
-  }, [formData.total_clicks_target, formData.cost_per_click, formData.start_date, formData.end_date])
+  }, [formData.total_clicks_target, formData.cpc_rate, formData.start_date, formData.end_date])
 
   const addHashtag = (hashtag: string) => {
     if (formData.hashtags.length >= 10) {
@@ -457,7 +457,7 @@ export function CampaignAdd({ onSuccess, advertiserId }: CampaignAddProps) {
                     min="1"
                   />
                   <p className="text-xs text-muted-foreground">
-                    클릭당 ₩{formData.cost_per_click.toLocaleString()}
+                    클릭당 ₩{formData.cpc_rate.toLocaleString()}
                   </p>
                 </div>
 
@@ -499,11 +499,12 @@ export function CampaignAdd({ onSuccess, advertiserId }: CampaignAddProps) {
                         )}
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
+                    <PopoverContent className="w-auto p-0" align="start">
                       <Calendar
                         mode="single"
                         selected={formData.start_date || undefined}
                         onSelect={(date) => setFormData(prev => ({ ...prev, start_date: date || null }))}
+                        disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
                         initialFocus
                       />
                     </PopoverContent>
@@ -526,11 +527,16 @@ export function CampaignAdd({ onSuccess, advertiserId }: CampaignAddProps) {
                         )}
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
+                    <PopoverContent className="w-auto p-0" align="start">
                       <Calendar
                         mode="single"
                         selected={formData.end_date || undefined}
                         onSelect={(date) => setFormData(prev => ({ ...prev, end_date: date || null }))}
+                        disabled={(date) => {
+                          const today = new Date(new Date().setHours(0, 0, 0, 0));
+                          const startDate = formData.start_date ? new Date(formData.start_date.setHours(0, 0, 0, 0)) : today;
+                          return date < today || date <= startDate;
+                        }}
                         initialFocus
                       />
                     </PopoverContent>

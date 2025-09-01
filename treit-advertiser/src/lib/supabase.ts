@@ -112,12 +112,12 @@ export const db = {
   // Advertiser operations
   advertisers: {
     // Get advertiser profile
-    getProfile: async (userId: string) => {
+    getProfile: async (authUid: string) => {
       try {
         const { data, error } = await supabase
-          .from('advertiser_profiles')
+          .from('businesses')
           .select('*')
-          .eq('id', userId)
+          .eq('auth_uid', authUid)
           .single()
         
         if (error) throw error
@@ -129,12 +129,12 @@ export const db = {
     },
 
     // Create advertiser profile
-    createProfile: async (userId: string, profileData: Omit<Database['public']['Tables']['advertiser_profiles']['Insert'], 'id'>) => {
+    createProfile: async (authUid: string, profileData: Partial<Database['public']['Tables']['businesses']['Insert']>) => {
       try {
         const { data, error } = await supabase
-          .from('advertiser_profiles')
+          .from('businesses')
           .insert({
-            id: userId,
+            auth_uid: authUid,
             ...profileData
           })
           .select()
@@ -149,12 +149,12 @@ export const db = {
     },
 
     // Update advertiser profile
-    updateProfile: async (advertiserId: string, updates: Partial<Database['public']['Tables']['advertiser_profiles']['Update']>) => {
+    updateProfile: async (businessId: string, updates: Partial<Database['public']['Tables']['businesses']['Update']>) => {
       try {
         const { data, error } = await supabase
-          .from('advertiser_profiles')
+          .from('businesses')
           .update({ ...updates, updated_at: new Date().toISOString() })
-          .eq('id', advertiserId)
+          .eq('id', businessId)
           .select()
           .single()
         
@@ -245,7 +245,7 @@ export const db = {
           .from('clicks')
           .select(`
             *,
-            campaigns(title, cost_per_click)
+            campaigns(title, cpc_rate)
           `)
           .eq('campaign_id', campaignId)
         

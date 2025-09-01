@@ -11,7 +11,7 @@ export const campaignApi = {
           *,
           campaign_templates(*)
         `)
-        .eq('advertiser_id', advertiserId)
+        .eq('business_id', advertiserId)
         .order('created_at', { ascending: false })
 
       // Apply filters
@@ -28,15 +28,15 @@ export const campaignApi = {
       }
 
       if (filters?.min_budget) {
-        query = query.gte('total_budget', filters.min_budget)
+        query = query.gte('budget', filters.min_budget)
       }
 
       if (filters?.max_budget) {
-        query = query.lte('total_budget', filters.max_budget)
+        query = query.lte('budget', filters.max_budget)
       }
 
       if (filters?.search) {
-        query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
+        query = query.or(`name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
       }
 
       const { data, error } = await query
@@ -74,23 +74,24 @@ export const campaignApi = {
   createCampaign: async (advertiserId: string, formData: CampaignFormData) => {
     try {
       const campaignData = {
-        advertiser_id: advertiserId,
-        title: formData.title,
+        business_id: advertiserId,
+        name: formData.title,
         description: formData.description,
-        original_url: formData.original_url,
-        cost_per_click: formData.cost_per_click,
-        total_budget: formData.total_budget,
-        daily_budget: formData.daily_budget,
-        total_clicks_target: formData.total_clicks_target,
+        destination_url: formData.original_url,
+        cpc_rate: formData.cpc_rate,
+        budget: formData.total_budget,
+        target_clicks: formData.total_clicks_target,
         current_clicks: 0,
-        remaining_clicks: formData.total_clicks_target,
-        status: 'draft' as const,
+        spent: 0,
+        is_active: false,
+        approval_status: 'PENDING' as const,
         start_date: formData.start_date?.toISOString(),
         end_date: formData.end_date?.toISOString(),
         image_url: formData.image_url,
-        hashtags: formData.hashtags,
-        post_template: formData.post_template,
-        platform_targets: formData.platform_targets || []
+        category: 'SHOPPING' as const,
+        target_demographics: {},
+        target_regions: [],
+        target_interests: []
       }
 
       const { data, error } = await supabase
@@ -201,7 +202,7 @@ export const campaignApi = {
       // Process analytics data
       const totalClicks = clicks?.length || 0
       const uniqueClicks = clicks?.filter(click => click.is_unique)?.length || 0
-      const totalSpent = totalClicks * campaign.cost_per_click
+      const totalSpent = totalClicks * campaign.cpc_rate
 
       // Group by date for daily stats
       const dailyStats = clicks?.reduce((acc: any, click: any) => {
@@ -210,7 +211,7 @@ export const campaignApi = {
           acc[date] = { date, clicks: 0, spent: 0, unique_clicks: 0 }
         }
         acc[date].clicks += 1
-        acc[date].spent += campaign.cost_per_click
+        acc[date].spent += campaign.cpc_rate
         if (click.is_unique) {
           acc[date].unique_clicks += 1
         }
@@ -224,7 +225,7 @@ export const campaignApi = {
           acc[platform] = { platform, clicks: 0, spent: 0, percentage: 0 }
         }
         acc[platform].clicks += 1
-        acc[platform].spent += campaign.cost_per_click
+        acc[platform].spent += campaign.cpc_rate
         return acc
       }, {})
 
@@ -240,7 +241,7 @@ export const campaignApi = {
           acc[hour] = { hour, clicks: 0, spent: 0 }
         }
         acc[hour].clicks += 1
-        acc[hour].spent += campaign.cost_per_click
+        acc[hour].spent += campaign.cpc_rate
         return acc
       }, {})
 
@@ -287,7 +288,7 @@ export const campaignApi = {
       const { data: campaigns, error } = await supabase
         .from('campaigns')
         .select('status, total_budget, current_clicks, total_clicks_target')
-        .eq('advertiser_id', advertiserId)
+        .eq('business_id', advertiserId)
 
       if (error) throw error
 

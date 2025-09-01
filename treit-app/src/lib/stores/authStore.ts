@@ -5,12 +5,16 @@ import { toast } from 'sonner';
 
 export interface User {
   id: string;
+  auth_uid: string;
   email: string;
+  nickname?: string;
   full_name?: string;
   phone?: string;
   level?: number;
   xp?: number;
   grade?: string;
+  total_clicks?: number;
+  valid_clicks?: number;
   total_earnings?: number;
   available_balance?: number;
 }
@@ -149,10 +153,10 @@ export const useAuthStore = create<AuthState>()(
           if (data.user) {
             console.log('AuthStore: User created in Supabase Auth:', data.user.id);
             
-            // Create user profile in user_profiles table immediately
+            // Create user profile in users table immediately
             try {
               const newUserData = {
-                id: data.user.id,
+                auth_uid: data.user.id,
                 email: email,
                 full_name: userData.full_name || '',
                 phone: userData.phone || ''
@@ -276,12 +280,12 @@ export const useAuthStore = create<AuthState>()(
       },
 
       // Fetch user profile from database
-      fetchUserProfile: async (userId: string): Promise<User | null> => {
+      fetchUserProfile: async (authUid: string): Promise<User | null> => {
         try {
-          console.log('Fetching user profile for userId:', userId);
+          console.log('Fetching user profile for authUid:', authUid);
           
           // Try to get user profile from database first
-          const { data: userProfile, error } = await db.getUserProfile(userId);
+          const { data: userProfile, error } = await db.getUserProfile(authUid);
           
           if (error) {
             console.error('Error fetching user profile from DB:', error);
@@ -292,7 +296,7 @@ export const useAuthStore = create<AuthState>()(
               console.log('Creating user profile from session data');
               // Create user profile in database
               const newUserData = {
-                id: userId,
+                auth_uid: authUid,
                 email: session.user.email || '',
                 full_name: session.user.user_metadata?.full_name || '',
                 phone: session.user.user_metadata?.phone || ''
@@ -304,27 +308,35 @@ export const useAuthStore = create<AuthState>()(
                 console.error('Error creating user profile:', createError);
                 // Return basic profile with session data
                 return {
-                  id: userId,
+                  id: '',
+                  auth_uid: authUid,
                   email: session.user.email || '',
+                  nickname: session.user.email?.split('@')[0] || '',
                   full_name: session.user.user_metadata?.full_name || '',
                   phone: session.user.user_metadata?.phone || '',
                   level: 1,
                   xp: 0,
                   grade: 'BRONZE',
+                  total_clicks: 0,
+                  valid_clicks: 0,
                   total_earnings: 0,
                   available_balance: 0
                 };
               } else if (createdProfile) {
                 return {
                   id: createdProfile.id,
+                  auth_uid: createdProfile.auth_uid,
                   email: createdProfile.email,
+                  nickname: createdProfile.nickname || '',
                   full_name: createdProfile.full_name || '',
                   phone: createdProfile.phone || '',
-                  level: createdProfile.current_level || 1,
-                  xp: createdProfile.total_points || 0,
-                  grade: 'BRONZE',
-                  total_earnings: 0,
-                  available_balance: 0
+                  level: createdProfile.level || 1,
+                  xp: createdProfile.xp || 0,
+                  grade: createdProfile.grade || 'BRONZE',
+                  total_clicks: createdProfile.total_clicks || 0,
+                  valid_clicks: createdProfile.valid_clicks || 0,
+                  total_earnings: createdProfile.total_earnings || 0,
+                  available_balance: createdProfile.available_balance || 0
                 };
               }
             }
@@ -333,14 +345,18 @@ export const useAuthStore = create<AuthState>()(
             console.log('User profile found in database:', userProfile);
             return {
               id: userProfile.id,
+              auth_uid: userProfile.auth_uid,
               email: userProfile.email,
+              nickname: userProfile.nickname || '',
               full_name: userProfile.full_name || '',
               phone: userProfile.phone || '',
-              level: userProfile.current_level || 1,
-              xp: userProfile.total_points || 0,
-              grade: 'BRONZE',
-              total_earnings: 0,
-              available_balance: 0
+              level: userProfile.level || 1,
+              xp: userProfile.xp || 0,
+              grade: userProfile.grade || 'BRONZE',
+              total_clicks: userProfile.total_clicks || 0,
+              valid_clicks: userProfile.valid_clicks || 0,
+              total_earnings: userProfile.total_earnings || 0,
+              available_balance: userProfile.available_balance || 0
             };
           }
           

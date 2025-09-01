@@ -9,34 +9,52 @@ BEGIN
     -- 일반 사용자 프로필 생성
     INSERT INTO public.users (
         id,
+        auth_uid,
         email,
-        username,
+        nickname,
         full_name,
+        phone,
         status,
         grade,
         level,
         xp,
         total_clicks,
+        valid_clicks,
         total_earnings,
-        balance,
+        available_balance,
         referral_code,
-        is_email_verified,
+        email_verified,
+        phone_verified,
+        login_count,
+        referral_count,
+        marketing_consent,
+        notification_consent,
+        failed_login_attempts,
         created_at,
         updated_at
     ) VALUES (
-        NEW.id,
+        gen_random_uuid(), -- 새 UUID 생성
+        NEW.id, -- Auth UID를 별도 필드에 저장
         NEW.email,
         LOWER(SPLIT_PART(NEW.email, '@', 1) || '_' || SUBSTR(MD5(RANDOM()::TEXT), 1, 4)),
         COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
+        COALESCE(NEW.raw_user_meta_data->>'phone', ''),
         'ACTIVE'::user_status,
         'BRONZE'::user_grade,
         1, -- 레벨 1로 시작
         0, -- XP 0으로 시작
-        0,
-        0,
-        0,
+        0, -- total_clicks
+        0, -- valid_clicks
+        0, -- total_earnings
+        0, -- available_balance
         UPPER(SUBSTR(MD5(RANDOM()::TEXT || NEW.id::TEXT), 1, 8)),
         NEW.email_confirmed_at IS NOT NULL,
+        false, -- phone_verified
+        0, -- login_count
+        0, -- referral_count
+        false, -- marketing_consent
+        true, -- notification_consent (default to true)
+        0, -- failed_login_attempts
         NOW(),
         NOW()
     );
@@ -56,24 +74,24 @@ BEGIN
     -- 광고주 프로필 생성
     INSERT INTO public.businesses (
         id,
+        auth_uid,
         email,
-        business_name,
-        representative_name,
+        company_name,
+        contact_person,
+        contact_phone,
         status,
-        balance,
-        total_spent,
-        is_verified,
+        account_balance,
         created_at,
         updated_at
     ) VALUES (
-        NEW.id,
+        gen_random_uuid(), -- 새 UUID 생성
+        NEW.id, -- Auth UID를 별도 필드에 저장
         NEW.email,
-        COALESCE(NEW.raw_user_meta_data->>'business_name', '미등록 사업체'),
+        COALESCE(NEW.raw_user_meta_data->>'company_name', '미등록 사업체'),
         COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
+        COALESCE(NEW.raw_user_meta_data->>'phone', ''),
         'PENDING'::business_status,
         0,
-        0,
-        false,
         NOW(),
         NOW()
     );
@@ -137,17 +155,46 @@ BEGIN
         NEW.total_clicks := 0;
     END IF;
     
+    IF NEW.valid_clicks IS NULL THEN
+        NEW.valid_clicks := 0;
+    END IF;
+    
     IF NEW.total_earnings IS NULL THEN
         NEW.total_earnings := 0;
     END IF;
     
-    IF NEW.balance IS NULL THEN
-        NEW.balance := 0;
+    IF NEW.available_balance IS NULL THEN
+        NEW.available_balance := 0;
     END IF;
     
     -- 레퍼럴 코드 생성
     IF NEW.referral_code IS NULL THEN
         NEW.referral_code := UPPER(SUBSTR(MD5(RANDOM()::TEXT || NEW.id::TEXT), 1, 8));
+    END IF;
+    
+    -- Initialize new fields with defaults
+    IF NEW.login_count IS NULL THEN
+        NEW.login_count := 0;
+    END IF;
+    
+    IF NEW.referral_count IS NULL THEN
+        NEW.referral_count := 0;
+    END IF;
+    
+    IF NEW.failed_login_attempts IS NULL THEN
+        NEW.failed_login_attempts := 0;
+    END IF;
+    
+    IF NEW.phone_verified IS NULL THEN
+        NEW.phone_verified := false;
+    END IF;
+    
+    IF NEW.marketing_consent IS NULL THEN
+        NEW.marketing_consent := false;
+    END IF;
+    
+    IF NEW.notification_consent IS NULL THEN
+        NEW.notification_consent := true;
     END IF;
     
     RETURN NEW;
@@ -176,12 +223,12 @@ BEGIN
     -- 새 정책 생성
     CREATE POLICY "Users can view own profile"
         ON users FOR SELECT
-        USING (auth.uid() = id);
+        USING (auth.uid() = auth_uid);
     
     CREATE POLICY "Users can update own profile"
         ON users FOR UPDATE
-        USING (auth.uid() = id)
-        WITH CHECK (auth.uid() = id);
+        USING (auth.uid() = auth_uid)
+        WITH CHECK (auth.uid() = auth_uid);
     
     CREATE POLICY "Public can view basic profile info"
         ON users FOR SELECT
@@ -202,12 +249,12 @@ BEGIN
     -- 새 정책 생성
     CREATE POLICY "Businesses can view own profile"
         ON businesses FOR SELECT
-        USING (auth.uid() = id);
+        USING (auth.uid() = auth_uid);
     
     CREATE POLICY "Businesses can update own profile"
         ON businesses FOR UPDATE
-        USING (auth.uid() = id)
-        WITH CHECK (auth.uid() = id);
+        USING (auth.uid() = auth_uid)
+        WITH CHECK (auth.uid() = auth_uid);
     
     CREATE POLICY "Public can view active businesses"
         ON businesses FOR SELECT
@@ -233,12 +280,12 @@ SELECT
     lc.required_xp as next_level_xp
 FROM users u
 LEFT JOIN level_config lc ON u.level = lc.level
-WHERE u.id = auth.uid();
+WHERE u.auth_uid = auth.uid();
 
 -- 현재 광고주 프로필 뷰
 CREATE OR REPLACE VIEW my_business AS
 SELECT * FROM businesses
-WHERE id = auth.uid();
+WHERE auth_uid = auth.uid();
 
 -- ============================================
 -- 테스트 및 정리

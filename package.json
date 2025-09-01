@@ -91,5 +91,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/bravo6co-debug/TREIT.git"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.1"
   }
 }
