@@ -1,0 +1,594 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_suite:
+        description: 'Test suite to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+        - all
+        - user-journey
+        - advertiser-journey
+        - admin-journey
+        - security
+        - performance
+      browser:
+        description: 'Browser to test'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+        - all
+        - chromium
+        - firefox
+        - webkit
+
+env:
+  NODE_VERSION: '18'
+  SUPABASE_CLI_VERSION: '1.200.3'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      test-matrix: ${{ steps.set-matrix.outputs.matrix }}
+      should-run-security: ${{ steps.check-changes.outputs.security }}
+      should-run-performance: ${{ steps.check-changes.outputs.performance }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for relevant changes
+        id: check-changes
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "security=true" >> $GITHUB_OUTPUT
+            echo "performance=true" >> $GITHUB_OUTPUT
+          else
+            # Check if security-related files changed
+            if git diff --name-only HEAD~1 HEAD | grep -E "(security|auth|middleware|validation)" > /dev/null; then
+              echo "security=true" >> $GITHUB_OUTPUT
+            else
+              echo "security=false" >> $GITHUB_OUTPUT
+            fi
+            
+            # Check if performance-related files changed
+            if git diff --name-only HEAD~1 HEAD | grep -E "(performance|bundle|optimization|webpack|vite)" > /dev/null; then
+              echo "performance=true" >> $GITHUB_OUTPUT
+            else
+              echo "performance=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Set test matrix
+        id: set-matrix
+        run: |
+          if [ "${{ inputs.test_suite }}" == "user-journey" ]; then
+            echo 'matrix={"project":["user-app-chrome","mobile-user-chrome"]}' >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.test_suite }}" == "advertiser-journey" ]; then
+            echo 'matrix={"project":["advertiser-app-chrome","tablet-advertiser"]}' >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.test_suite }}" == "admin-journey" ]; then
+            echo 'matrix={"project":["admin-app-chrome"]}' >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.test_suite }}" == "security" ]; then
+            echo 'matrix={"project":["security-tests"]}' >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.test_suite }}" == "performance" ]; then
+            echo 'matrix={"project":["performance-tests"]}' >> $GITHUB_OUTPUT
+          else
+            echo 'matrix={"project":["user-app-chrome","advertiser-app-chrome","admin-app-chrome","integration-tests"]}' >> $GITHUB_OUTPUT
+          fi
+
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm run install:all
+
+      - name: Run TypeScript type check
+        run: npm run typecheck
+
+      - name: Run linting (if configured)
+        run: npm run lint
+        continue-on-error: true
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm run install:all
+
+      - name: Build all applications
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            treit-app/dist
+            treit-advertiser/dist
+            treit-admin/dist
+          retention-days: 1
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: [prepare, build]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.test-matrix) }}
+    timeout-minutes: 60
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Supabase CLI
+        run: |
+          npm install -g @supabase/supabase-js@latest
+          npm install -g supabase@${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Setup Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm run install:all
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps
+
+      - name: Setup test environment
+        run: |
+          # Copy environment template files
+          cp treit-app/env.template.js treit-app/env.local.js
+          cp treit-advertiser/env.template.js treit-advertiser/env.local.js
+          cp treit-admin/env.template.js treit-admin/env.local.js
+          
+          # Set test environment variables
+          echo "NODE_ENV=test" >> $GITHUB_ENV
+          echo "SUPABASE_URL=http://localhost:54321" >> $GITHUB_ENV
+          echo "SUPABASE_ANON_KEY=test-key" >> $GITHUB_ENV
+
+      - name: Start Supabase
+        run: |
+          supabase start
+          supabase status
+
+      - name: Run database migrations
+        run: |
+          supabase db reset --linked=false
+          supabase db seed
+
+      - name: Start development servers in background
+        run: |
+          npm run dev:user &
+          npm run dev:advertiser &
+          npm run dev:admin &
+          
+          # Wait for servers to start
+          timeout 60 bash -c 'until curl -f http://localhost:3000; do sleep 2; done'
+          timeout 60 bash -c 'until curl -f http://localhost:3001; do sleep 2; done'
+          timeout 60 bash -c 'until curl -f http://localhost:3002; do sleep 2; done'
+
+      - name: Run E2E tests
+        run: npx playwright test --project=${{ matrix.project }}
+        env:
+          CI: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.project }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 30
+
+      - name: Upload screenshots and videos
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts-${{ matrix.project }}
+          path: |
+            test-results/screenshots/
+            test-results/videos/
+            test-results/traces/
+          retention-days: 30
+
+  security-tests:
+    runs-on: ubuntu-latest
+    needs: [prepare, build]
+    if: needs.prepare.outputs.should-run-security == 'true' || github.event_name == 'schedule'
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Supabase CLI
+        run: npm install -g supabase@${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm run install:all
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Setup test environment
+        run: |
+          cp treit-app/env.template.js treit-app/env.local.js
+          cp treit-advertiser/env.template.js treit-advertiser/env.local.js
+          cp treit-admin/env.template.js treit-admin/env.local.js
+
+      - name: Start Supabase
+        run: |
+          supabase start
+          supabase db reset --linked=false
+
+      - name: Start development servers
+        run: |
+          npm run dev:user &
+          npm run dev:advertiser &
+          npm run dev:admin &
+          
+          timeout 60 bash -c 'until curl -f http://localhost:3000; do sleep 2; done'
+          timeout 60 bash -c 'until curl -f http://localhost:3001; do sleep 2; done'
+          timeout 60 bash -c 'until curl -f http://localhost:3002; do sleep 2; done'
+
+      - name: Run security tests
+        run: npx playwright test --grep "@security" --project=security-tests
+        env:
+          CI: true
+
+      - name: Generate security report
+        if: always()
+        run: |
+          echo "## Security Test Results" > security-report.md
+          echo "Date: $(date)" >> security-report.md
+          echo "" >> security-report.md
+          
+          if [ -f "test-results/security-summary.json" ]; then
+            echo "### Summary" >> security-report.md
+            cat test-results/security-summary.json >> security-report.md
+          fi
+
+      - name: Upload security test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-test-results
+          path: |
+            test-results/
+            security-report.md
+          retention-days: 30
+
+      - name: Comment security results on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('security-report.md')) {
+              const report = fs.readFileSync('security-report.md', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: '## 🔒 Security Test Results\n\n' + report
+              });
+            }
+
+  performance-tests:
+    runs-on: ubuntu-latest
+    needs: [prepare, build]
+    if: needs.prepare.outputs.should-run-performance == 'true' || github.event_name == 'schedule'
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Supabase CLI
+        run: npm install -g supabase@${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm run install:all
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Setup test environment
+        run: |
+          cp treit-app/env.template.js treit-app/env.local.js
+          cp treit-advertiser/env.template.js treit-advertiser/env.local.js
+          cp treit-admin/env.template.js treit-admin/env.local.js
+
+      - name: Start Supabase
+        run: |
+          supabase start
+          supabase db reset --linked=false
+          supabase db seed
+
+      - name: Start development servers
+        run: |
+          npm run dev:user &
+          npm run dev:advertiser &
+          npm run dev:admin &
+          
+          timeout 60 bash -c 'until curl -f http://localhost:3000; do sleep 2; done'
+          timeout 60 bash -c 'until curl -f http://localhost:3001; do sleep 2; done'
+          timeout 60 bash -c 'until curl -f http://localhost:3002; do sleep 2; done'
+
+      - name: Run performance tests
+        run: npx playwright test --grep "@performance" --project=performance-tests
+        env:
+          CI: true
+
+      - name: Generate performance report
+        if: always()
+        run: |
+          echo "## Performance Test Results" > performance-report.md
+          echo "Date: $(date)" >> performance-report.md
+          echo "" >> performance-report.md
+          
+          if [ -f "test-results/performance-summary.json" ]; then
+            echo "### Performance Metrics" >> performance-report.md
+            cat test-results/performance-summary.json >> performance-report.md
+          fi
+
+      - name: Upload performance test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-test-results
+          path: |
+            test-results/
+            performance-report.md
+          retention-days: 30
+
+      - name: Comment performance results on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('performance-report.md')) {
+              const report = fs.readFileSync('performance-report.md', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: '## ⚡ Performance Test Results\n\n' + report
+              });
+            }
+
+  test-summary:
+    runs-on: ubuntu-latest
+    needs: [e2e-tests, security-tests, performance-tests]
+    if: always()
+    steps:
+      - name: Download all test artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-test-results
+
+      - name: Generate test summary
+        run: |
+          echo "# 🧪 E2E Test Summary" > test-summary.md
+          echo "" >> test-summary.md
+          echo "**Date:** $(date)" >> test-summary.md
+          echo "**Branch:** ${{ github.ref_name }}" >> test-summary.md
+          echo "**Commit:** ${{ github.sha }}" >> test-summary.md
+          echo "" >> test-summary.md
+          
+          echo "## Test Results" >> test-summary.md
+          echo "" >> test-summary.md
+          
+          # Check job results
+          if [ "${{ needs.e2e-tests.result }}" == "success" ]; then
+            echo "✅ **E2E Tests:** Passed" >> test-summary.md
+          elif [ "${{ needs.e2e-tests.result }}" == "failure" ]; then
+            echo "❌ **E2E Tests:** Failed" >> test-summary.md
+          else
+            echo "⏭️ **E2E Tests:** Skipped" >> test-summary.md
+          fi
+          
+          if [ "${{ needs.security-tests.result }}" == "success" ]; then
+            echo "🔒 **Security Tests:** Passed" >> test-summary.md
+          elif [ "${{ needs.security-tests.result }}" == "failure" ]; then
+            echo "⚠️ **Security Tests:** Failed" >> test-summary.md
+          else
+            echo "⏭️ **Security Tests:** Skipped" >> test-summary.md
+          fi
+          
+          if [ "${{ needs.performance-tests.result }}" == "success" ]; then
+            echo "⚡ **Performance Tests:** Passed" >> test-summary.md
+          elif [ "${{ needs.performance-tests.result }}" == "failure" ]; then
+            echo "🐌 **Performance Tests:** Failed" >> test-summary.md
+          else
+            echo "⏭️ **Performance Tests:** Skipped" >> test-summary.md
+          fi
+          
+          echo "" >> test-summary.md
+          echo "## Artifacts" >> test-summary.md
+          echo "- Test reports and screenshots are available in the workflow artifacts" >> test-summary.md
+          echo "- Security and performance reports (if run) include detailed metrics" >> test-summary.md
+
+      - name: Upload test summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-summary
+          path: test-summary.md
+          retention-days: 30
+
+      - name: Comment test summary on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('test-summary.md')) {
+              const summary = fs.readFileSync('test-summary.md', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: summary
+              });
+            }
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [test-summary]
+    if: always() && (github.event_name == 'schedule' || github.ref == 'refs/heads/main')
+    steps:
+      - name: Notify on failure
+        if: contains(needs.*.result, 'failure')
+        run: |
+          echo "🚨 E2E tests failed on main branch or scheduled run"
+          echo "Check the workflow results and take appropriate action"
+          # In a real implementation, you might send notifications to Slack, Discord, etc.
+
+  cleanup:
+    runs-on: ubuntu-latest
+    needs: [test-summary]
+    if: always()
+    steps:
+      - name: Cleanup old workflow runs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Keep only the last 50 workflow runs
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'e2e-tests.yml',
+              per_page: 100
+            });
+            
+            const oldRuns = runs.data.workflow_runs.slice(50);
+            
+            for (const run of oldRuns) {
+              if (run.status === 'completed') {
+                await github.rest.actions.deleteWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: run.id
+                });
+              }
+            }

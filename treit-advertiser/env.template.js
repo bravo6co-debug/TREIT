@@ -1,0 +1,13 @@
+// Environment configuration template
+// This file will be processed by envsubst during container startup
+window.ENV = {
+  VITE_SUPABASE_URL: '${VITE_SUPABASE_URL}',
+  VITE_SUPABASE_ANON_KEY: '${VITE_SUPABASE_ANON_KEY}',
+  VITE_APP_ENV: '${VITE_APP_ENV}',
+  VITE_APP_VERSION: '${VITE_APP_VERSION}',
+  VITE_API_BASE_URL: '${VITE_API_BASE_URL}',
+  VITE_PAYMENT_GATEWAY_URL: '${VITE_PAYMENT_GATEWAY_URL}',
+  VITE_ANALYTICS_ID: '${VITE_ANALYTICS_ID}',
+  VITE_LOG_LEVEL: '${VITE_LOG_LEVEL}',
+  VITE_ENABLE_LOGGING: '${VITE_ENABLE_LOGGING}'
+};
