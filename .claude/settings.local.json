@@ -66,7 +66,14 @@
       "Read(/C:\\Users\\admin\\TREIT-main\\treit-admin\\src\\components/**)",
       "Read(/C:\\Users\\admin\\TREIT-main\\treit-admin\\src\\components/**)",
       "Read(/C:\\Users\\admin\\TREIT-main\\treit-admin\\src\\components/**)",
-      "Read(/C:\\Users\\admin\\TREIT-main\\treit-admin\\src\\components/**)"
+      "Read(/C:\\Users\\admin\\TREIT-main\\treit-admin\\src\\components/**)",
+      "Read(/C:\\Users\\admin\\TREIT-main\\treit-app/**)",
+      "Read(/c:\\Users\\admin\\TREIT-main\\treit-app/**)",
+      "Read(/c:\\Users\\admin\\TREIT-main\\treit-app\\src\\components/**)",
+      "Bash(git restore:*)",
+      "Read(/c:\\Users\\admin\\TREIT-main\\treit-app\\src\\components/**)",
+      "Read(/c:\\Users\\admin\\TREIT-main\\treit-app\\src\\components/**)",
+      "Read(/C:\\Users\\admin\\TREIT-main/**)"
     ],
     "deny": [],
     "ask": []

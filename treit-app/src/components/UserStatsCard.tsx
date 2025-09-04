@@ -35,25 +35,25 @@ const UserStatsCard = memo(({
   getNextLevelProgress
 }: UserStatsCardProps) => {
   return (
-    <div className="px-4 pt-4 mb-6">
-      <Card className={`p-6 bg-gradient-to-br from-white to-slate-50 shadow-xl border-2 ${
+    <div className="px-4 pt-4 mb-4">
+      <Card className={`p-4 bg-gradient-to-br from-white to-slate-50 shadow-xl border-2 ${
         levelUpAnimation ? 'animate-pulse border-yellow-400 shadow-yellow-400/50' : 'border-gray-200'
       }`}>
-        <div className="flex items-center mb-4">
-          <div className={`w-16 h-16 bg-gradient-to-br ${
+        <div className="flex items-center mb-3">
+          <div className={`w-12 h-12 bg-gradient-to-br ${
             userLevelInfo.grade === 'BRONZE' ? 'from-amber-400 to-amber-600' :
             userLevelInfo.grade === 'SILVER' ? 'from-gray-400 to-gray-600' :
             userLevelInfo.grade === 'GOLD' ? 'from-yellow-400 to-yellow-600' :
             userLevelInfo.grade === 'DIAMOND' ? 'from-blue-400 to-purple-600' :
             'from-purple-500 to-pink-600'
-          } rounded-full flex items-center justify-center mr-4 shadow-lg border-2 ${
+          } rounded-full flex items-center justify-center mr-3 shadow-lg border-2 ${
             userLevelInfo.grade === 'BRONZE' ? 'border-amber-300' :
             userLevelInfo.grade === 'SILVER' ? 'border-gray-300' :
             userLevelInfo.grade === 'GOLD' ? 'border-yellow-300' :
             userLevelInfo.grade === 'DIAMOND' ? 'border-blue-300' :
             'border-purple-300'
           } ${levelUpAnimation ? 'animate-bounce' : ''}`}>
-            <User size={32} className="text-white" />
+            <User size={24} className="text-white" />
           </div>
           <div className="flex-1">
             <div className="flex items-center justify-between mb-1">
@@ -80,45 +80,27 @@ const UserStatsCard = memo(({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="text-center p-3 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200">
-            <div className="text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="text-center p-2 rounded-lg bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200">
+            <div className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
               ₩{userStats.totalEarnings.toLocaleString()}
             </div>
-            <div className="text-slate-600 text-sm">총 수익</div>
+            <div className="text-slate-600 text-xs">총 수익</div>
           </div>
-          <div className="text-center p-3 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200">
-            <div className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+          <div className="text-center p-2 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200">
+            <div className="text-lg font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
               {userLevelInfo.totalXp.toLocaleString()}
             </div>
-            <div className="text-slate-600 text-sm">총 XP</div>
+            <div className="text-slate-600 text-xs">총 XP</div>
           </div>
-          <div className="text-center p-3 rounded-xl bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200">
-            <div className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-              {userStats.totalProjects}
-            </div>
-            <div className="text-slate-600 text-sm">완료 프로젝트</div>
-          </div>
+        </div>
+        
+        <div className="flex items-center justify-center mb-3">
+          <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-xs">
+            완료 프로젝트 {userStats.totalProjects}개
+          </Badge>
         </div>
 
-        <div className="mb-4">
-          <div className="flex justify-between text-sm mb-2 text-gray-600">
-            <span>{userLevelInfo.currentXp} XP</span>
-            <span>{userLevelInfo.nextLevelXp || '최고'} XP</span>
-          </div>
-          <div className="relative">
-            <Progress value={getNextLevelProgress()} className="h-3" />
-            {levelUpAnimation && (
-              <div className="absolute inset-0 bg-gradient-to-r from-yellow-400 to-yellow-600 opacity-50 animate-ping rounded-full"></div>
-            )}
-          </div>
-          <div className="text-center text-gray-600 text-sm mt-2">
-            {userLevelInfo.nextLevelXp > 0 
-              ? `다음 레벨까지 ${userLevelInfo.remainingXp} XP`
-              : '최고 레벨 달성!'
-            }
-          </div>
-        </div>
       </Card>
     </div>
   );
