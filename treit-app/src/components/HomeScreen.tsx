@@ -9,7 +9,6 @@ import UserStatsCard from './UserStatsCard';
 import TodayMissions from './TodayMissions';
 import PremiumBanner from './PremiumBanner';
 import SNSAccountBanner from './SNSAccountBanner';
-import CoupangBanner from './CoupangBanner';
 import QuickActions from './QuickActions';
 import treItLogo from 'figma:asset/4d914e156bb643f84e4345ddcffa6614b97a1685.png';
 
@@ -156,8 +155,6 @@ const HomeScreen = memo(({ onNavigateToPremium, onNavigateToSettings }: HomeScre
       />
 
       <PremiumBanner onNavigateToPremium={onNavigateToPremium} />
-
-      <CoupangBanner />
 
       <div className="px-4 mb-6">
         <AttendanceCalendar compact={false} />
