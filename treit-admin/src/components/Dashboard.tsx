@@ -25,10 +25,12 @@ import {
   Server,
   Database,
   Wifi,
-  HardDrive
+  HardDrive,
+  Trophy
 } from 'lucide-react'
 import { RealTimeChart } from './RealTimeChart'
 import { AlertSystem } from './AlertSystem'
+import { RankingMonitor } from './RankingMonitor'
 
 interface DashboardStats {
   totalUsers: number
@@ -285,8 +287,9 @@ export function Dashboard() {
 
       {/* 메인 콘텐츠 탭 */}
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">개요</TabsTrigger>
+          <TabsTrigger value="ranking">랭킹 모니터</TabsTrigger>
           <TabsTrigger value="system">시스템 상태</TabsTrigger>
           <TabsTrigger value="activities">활동 로그</TabsTrigger>
           <TabsTrigger value="alerts">경고 센터</TabsTrigger>
@@ -376,6 +379,11 @@ export function Dashboard() {
 
             <AlertSystem />
           </div>
+        </TabsContent>
+
+        {/* 랭킹 모니터 탭 */}
+        <TabsContent value="ranking" className="space-y-6">
+          <RankingMonitor />
         </TabsContent>
 
         {/* 시스템 상태 탭 */}

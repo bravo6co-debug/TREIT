@@ -20,11 +20,13 @@ const SNSAccountBanner = memo(({ onNavigateToSettings }: SNSAccountBannerProps) 
               <Shield size={24} className="text-gray-900" />
             </div>
             <div className="flex-1">
-              <h3 className="text-subheading text-slate-800 mb-1">SNS 계정 등록</h3>
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-subheading text-slate-800">SNS 계정 등록</h3>
+                <Badge className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-gray-900 border-0 shadow-md font-semibold text-xs">
+                  인증 필수
+                </Badge>
+              </div>
               <p className="text-sm text-slate-600">크로스 체크 및 어뷰징 방지를 위한 계정 등록이 필요합니다</p>
-              <Badge className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-gray-900 border-0 shadow-md font-semibold text-xs mt-2">
-                인증 필수
-              </Badge>
             </div>
           </div>
           <div className="flex items-center">

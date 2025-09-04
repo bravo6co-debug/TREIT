@@ -59,7 +59,14 @@
       "Read(/C:\\Users\\admin\\TREIT-main\\treit-app\\src\\lib\\stores/**)",
       "Read(/C:\\Users\\admin\\TREIT-main\\treit-app\\src\\components/**)",
       "Read(/c:\\Users\\admin\\TREIT-main\\treit-app/**)",
-      "Read(/C:\\Users\\admin\\TREIT-main\\treit-app/**)"
+      "Read(/C:\\Users\\admin\\TREIT-main\\treit-app/**)",
+      "Read(/C:\\Users\\admin\\TREIT-main\\treit-admin\\src\\components/**)",
+      "Read(/C:\\Users\\admin\\TREIT-main\\treit-admin\\src\\components/**)",
+      "Read(/C:\\Users\\admin\\TREIT-main\\treit-admin\\src\\components/**)",
+      "Read(/C:\\Users\\admin\\TREIT-main\\treit-admin\\src\\components/**)",
+      "Read(/C:\\Users\\admin\\TREIT-main\\treit-admin\\src\\components/**)",
+      "Read(/C:\\Users\\admin\\TREIT-main\\treit-admin\\src\\components/**)",
+      "Read(/C:\\Users\\admin\\TREIT-main\\treit-admin\\src\\components/**)"
     ],
     "deny": [],
     "ask": []
