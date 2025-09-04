@@ -81,6 +81,7 @@ interface LevelStore {
   claimDailyBonus: () => boolean;
   updateUserStats: (stats: Partial<UserStats>) => void;
   resetDailyContent: () => void;
+  clearBonusData: () => void;
   
   // Getters
   getNextLevelProgress: () => number;
@@ -166,6 +167,15 @@ const generateReferralCode = (): string => {
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 };
 
+// localStorage 데이터 마이그레이션 헬퍼
+const migrateData = (state: any) => {
+  // claimDate가 없으면 추가
+  if (state.dailyBonus && !('claimDate' in state.dailyBonus)) {
+    state.dailyBonus.claimDate = undefined;
+  }
+  return state;
+};
+
 export const useLevelStore = create<LevelStore>()(
   persist(
     (set, get) => ({
@@ -176,6 +186,7 @@ export const useLevelStore = create<LevelStore>()(
       miniGames: initialMiniGames,
       dailyBonus: {
         claimed: false,
+        claimDate: undefined,
         streakDays: 5, // Demo: 5-day streak
         xpReward: 30
       },
@@ -412,6 +423,18 @@ export const useLevelStore = create<LevelStore>()(
         });
       },
       
+      clearBonusData: () => {
+        set((state) => ({
+          ...state,
+          dailyBonus: {
+            claimed: false,
+            claimDate: undefined,
+            streakDays: state.dailyBonus.streakDays,
+            xpReward: 30
+          }
+        }));
+      },
+      
       // Getters
       getNextLevelProgress: () => {
         const state = get();
@@ -442,8 +465,23 @@ export const useLevelStore = create<LevelStore>()(
     }),
     {
       name: 'treit-level-store',
-      version: 1,
-      storage: createJSONStorage(() => localStorage)
+      version: 2, // 버전 업데이트로 기존 캐시 무효화
+      storage: createJSONStorage(() => localStorage, {
+        reviver: (key, value) => {
+          // Date 문자열을 Date 객체로 변환
+          if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
+            return new Date(value);
+          }
+          return value;
+        }
+      }),
+      migrate: (persistedState: any, version: number) => {
+        if (version === 1) {
+          // 버전 1에서 2로 마이그레이션
+          return migrateData(persistedState);
+        }
+        return persistedState as any;
+      }
     }
   )
 );

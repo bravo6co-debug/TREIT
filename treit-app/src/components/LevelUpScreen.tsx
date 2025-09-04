@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Star, Target, CheckCircle, Clock, Gift, Tabs } from 'lucide-react';
+import { Star, Target, CheckCircle, Clock, Gift, Tabs, Trophy } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Progress } from './ui/progress';
@@ -9,6 +9,8 @@ import { createXPGainRecord } from '../lib/api/xp';
 import LevelProgress from './LevelProgress';
 import XPBoosterGames from './XPBoosterGames';
 import AchievementTracker from './AchievementTracker';
+import MyRankingCard from './MyRankingCard';
+import RankingScreen from './RankingScreen';
 import { toast } from 'sonner';
 
 export default function LevelUpScreen() {
@@ -21,6 +23,7 @@ export default function LevelUpScreen() {
   } = useLevelStore();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'missions' | 'games' | 'achievements'>('overview');
+  const [showRankingScreen, setShowRankingScreen] = useState(false);
 
   const handleDailyMissionComplete = (missionId: string) => {
     const success = completeDailyMission(missionId);
@@ -58,10 +61,25 @@ export default function LevelUpScreen() {
     </Button>
   );
 
+  // 랭킹 화면 표시 중이면 랭킹 화면 렌더링
+  if (showRankingScreen) {
+    return (
+      <RankingScreen 
+        onBack={() => setShowRankingScreen(false)} 
+      />
+    );
+  }
+
   const renderOverviewTab = () => (
     <div className="space-y-6">
       {/* Level Progress */}
       <LevelProgress />
+
+      {/* Ranking Card - 새로 추가 */}
+      <MyRankingCard 
+        onViewFullRanking={() => setShowRankingScreen(true)}
+        compact={true}
+      />
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 gap-4">

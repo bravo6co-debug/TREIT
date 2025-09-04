@@ -47,18 +47,23 @@ const HomeScreen = memo(({ onNavigateToPremium, onNavigateToSettings }: HomeScre
 
   // Check for daily bonus on component mount
   useEffect(() => {
-    const today = new Date().toDateString();
-    const lastClaimDate = dailyBonus.claimDate ? new Date(dailyBonus.claimDate).toDateString() : null;
-    
-    // 오늘 아직 보너스를 받지 않았을 때만 팝업 표시
-    const shouldShowBonus = lastClaimDate !== today;
-    
-    if (shouldShowBonus) {
-      // Show daily bonus popup after a short delay
-      setTimeout(() => {
+    // 약간의 지연을 두어 store가 완전히 로드되도록 함
+    const checkBonus = () => {
+      const today = new Date().toDateString();
+      const lastClaimDate = dailyBonus.claimDate ? new Date(dailyBonus.claimDate).toDateString() : null;
+      
+      
+      // 오늘 아직 보너스를 받지 않았을 때만 팝업 표시
+      const shouldShowBonus = lastClaimDate !== today;
+      
+      if (shouldShowBonus) {
         setShowDailyBonus(true);
-      }, 1000);
-    }
+      }
+    };
+    
+    // Store hydration 후 체크
+    const timer = setTimeout(checkBonus, 1500);
+    return () => clearTimeout(timer);
   }, []); // 의존성 배열을 비워서 컴포넌트 마운트시에만 체크
 
   // Update mission rewards based on level changes
