@@ -116,7 +116,9 @@ export default function DailyBonus({ isOpen, onClose }: DailyBonusProps) {
         }, 3000);
       } else {
         toast.error('이미 오늘의 보너스를 받으셨습니다.');
-        onClose();
+        setTimeout(() => {
+          onClose();
+        }, 1500);
         setClaimingBonus(false);
       }
     }, 800);
@@ -125,8 +127,8 @@ export default function DailyBonus({ isOpen, onClose }: DailyBonusProps) {
   if (!isOpen) return null;
 
   const todayString = new Date().toDateString();
-  const lastLoginString = loginDates[loginDates.length - 1]?.toDateString();
-  const isNewDay = lastLoginString !== todayString;
+  const lastClaimDate = dailyBonus.claimDate ? new Date(dailyBonus.claimDate).toDateString() : null;
+  const hasClaimedToday = lastClaimDate === todayString;
 
   return (
     <>
@@ -210,7 +212,7 @@ export default function DailyBonus({ isOpen, onClose }: DailyBonusProps) {
 
           {/* Bonus Content */}
           <div className="text-center mb-6">
-            {!dailyBonus.claimed && isNewDay ? (
+            {!hasClaimedToday ? (
               <div>
                 <div className="mb-4">
                   <div className={`w-20 h-20 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg ${
@@ -282,7 +284,7 @@ export default function DailyBonus({ isOpen, onClose }: DailyBonusProps) {
                   <Gift size={32} className="text-gray-600" />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-700 mb-2">
-                  {dailyBonus.claimed ? '오늘 보너스를 받았습니다!' : '이미 받은 보너스입니다'}
+                  오늘 보너스를 이미 받았습니다!
                 </h3>
                 <p className="text-gray-600 mb-4">
                   내일 다시 방문해서 보너스를 받아보세요

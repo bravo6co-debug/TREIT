@@ -48,8 +48,10 @@ const HomeScreen = memo(({ onNavigateToPremium, onNavigateToSettings }: HomeScre
   // Check for daily bonus on component mount
   useEffect(() => {
     const today = new Date().toDateString();
-    const lastClaimDate = dailyBonus.claimDate?.toDateString();
-    const shouldShowBonus = !dailyBonus.claimed && lastClaimDate !== today;
+    const lastClaimDate = dailyBonus.claimDate ? new Date(dailyBonus.claimDate).toDateString() : null;
+    
+    // 오늘 아직 보너스를 받지 않았을 때만 팝업 표시
+    const shouldShowBonus = lastClaimDate !== today;
     
     if (shouldShowBonus) {
       // Show daily bonus popup after a short delay
@@ -57,7 +59,7 @@ const HomeScreen = memo(({ onNavigateToPremium, onNavigateToSettings }: HomeScre
         setShowDailyBonus(true);
       }, 1000);
     }
-  }, [dailyBonus]);
+  }, []); // 의존성 배열을 비워서 컴포넌트 마운트시에만 체크
 
   // Update mission rewards based on level changes
   useEffect(() => {

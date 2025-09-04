@@ -305,15 +305,11 @@ export const useLevelStore = create<LevelStore>()(
       claimDailyBonus: () => {
         const state = get();
         
-        if (state.dailyBonus.claimed) {
-          return false;
-        }
-        
         const today = new Date().toDateString();
-        const lastLoginDate = state.loginDates[state.loginDates.length - 1];
-        const isNewDay = !lastLoginDate || new Date(lastLoginDate).toDateString() !== today;
+        const lastClaimDate = state.dailyBonus.claimDate ? new Date(state.dailyBonus.claimDate).toDateString() : null;
         
-        if (!isNewDay) {
+        // 이미 오늘 보너스를 받았는지 확인
+        if (lastClaimDate === today) {
           return false;
         }
         
@@ -392,19 +388,28 @@ export const useLevelStore = create<LevelStore>()(
       },
       
       resetDailyContent: () => {
-        set((state) => ({
-          ...state,
-          dailyMissions: initialDailyMissions,
-          dailyBonus: {
-            claimed: false,
-            streakDays: state.dailyBonus.streakDays,
-            xpReward: 30
-          },
-          miniGames: state.miniGames.map(game => ({
-            ...game,
-            cooldownUntil: undefined
-          }))
-        }));
+        set((state) => {
+          const today = new Date().toDateString();
+          const lastClaimDate = state.dailyBonus.claimDate ? new Date(state.dailyBonus.claimDate).toDateString() : null;
+          
+          // 날짜가 바뀌었을 때만 리셋
+          const shouldReset = lastClaimDate !== today;
+          
+          return {
+            ...state,
+            dailyMissions: initialDailyMissions,
+            dailyBonus: {
+              claimed: false,
+              claimDate: shouldReset ? undefined : state.dailyBonus.claimDate,
+              streakDays: state.dailyBonus.streakDays,
+              xpReward: 30
+            },
+            miniGames: state.miniGames.map(game => ({
+              ...game,
+              cooldownUntil: undefined
+            }))
+          };
+        });
       },
       
       // Getters
